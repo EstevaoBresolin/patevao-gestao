@@ -1,0 +1,91 @@
+import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { LayoutDashboard, ShoppingCart, Boxes, Package, Hammer, Truck, Settings, LogOut, Plus, Wallet, Users, MoreHorizontal, Layers } from 'lucide-react'
+import { useState } from 'react'
+import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/auth'
+
+const nav = [
+  { to: '/', label: 'Painel', icon: LayoutDashboard, end: true },
+  { to: '/vendas', label: 'Vendas', icon: ShoppingCart },
+  { to: '/estoque', label: 'Estoque', icon: Boxes },
+  { to: '/producao', label: 'Produção', icon: Hammer },
+  { to: '/produtos', label: 'Produtos', icon: Package },
+  { to: '/materiais', label: 'Materiais', icon: Layers },
+  { to: '/compras', label: 'Compras', icon: Truck },
+  { to: '/cadastros', label: 'Fornecedores e clientes', icon: Users },
+  { to: '/financeiro', label: 'Despesas', icon: Wallet, admin: true },
+  { to: '/config', label: 'Configurações', icon: Settings, admin: true },
+]
+
+export default function Layout() {
+  const { nome, isAdmin } = useAuth()
+  const navigate = useNavigate()
+  const [mais, setMais] = useState(false)
+  const itens = nav.filter((n) => !n.admin || isAdmin)
+
+  return (
+    <div className="min-h-screen md:grid md:grid-cols-[232px_1fr]">
+      {/* Barra lateral */}
+      <aside className="hidden border-r border-line bg-panel md:flex md:flex-col">
+        <div className="led-strip flex h-14 items-center gap-2.5 border-b border-line px-5">
+          <img src="/icon.svg" alt="" className="h-7 w-7" />
+          <span className="wide font-bold tracking-tight">Patevão</span>
+        </div>
+        <div className="p-3">
+          <button onClick={() => navigate('/vendas/nova')} className="flex h-10 w-full items-center justify-center gap-2 rounded-box bg-ink font-medium text-base hover:bg-ink/90">
+            <Plus size={18} /> Nova venda
+          </button>
+        </div>
+        <nav className="flex flex-1 flex-col gap-0.5 px-3">
+          {itens.map(({ to, label, icon: Icon, end }) => (
+            <NavLink key={to} to={to} end={end}
+              className={({ isActive }) => `flex items-center gap-3 rounded-box px-3 py-2 text-[15px] ${isActive ? 'bg-led/15 font-semibold text-ink' : 'text-muted hover:bg-line/40 hover:text-ink'}`}>
+              {({ isActive }) => (<><Icon size={18} className={isActive ? 'text-ledink' : ''} />{label}</>)}
+            </NavLink>
+          ))}
+        </nav>
+        <div className="flex items-center justify-between border-t border-line px-4 py-3 text-sm">
+          <span className="truncate text-muted">{nome}</span>
+          <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-1.5 text-muted hover:text-ink"><LogOut size={16} /> Sair</button>
+        </div>
+      </aside>
+
+      {/* Topo no celular */}
+      <header className="led-strip sticky top-0 z-30 flex h-14 items-center gap-2.5 border-b border-line bg-panel px-4 md:hidden">
+        <img src="/icon.svg" alt="" className="h-7 w-7" />
+        <span className="wide font-bold tracking-tight">Patevão</span>
+      </header>
+
+      <main className="mx-auto w-full min-w-0 max-w-6xl px-4 pb-28 pt-6 sm:px-6 md:pb-10 md:pt-8">
+        <Outlet />
+      </main>
+
+      {/* Barra inferior no celular */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-panel pb-[env(safe-area-inset-bottom)] md:hidden">
+        {[nav[0], nav[1]].map(({ to, label, icon: Icon, end }) => (
+          <NavLink key={to} to={to} end={end} className={({ isActive }) => `flex flex-col items-center gap-0.5 py-2 text-[11px] ${isActive ? 'text-ink font-semibold' : 'text-muted'}`}>
+            <Icon size={20} />{label}
+          </NavLink>
+        ))}
+        <button onClick={() => navigate('/vendas/nova')} className="flex flex-col items-center justify-center" aria-label="Nova venda">
+          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-ink text-base shadow-[0_0_14px_rgb(var(--led)/.6)]"><Plus size={22} /></span>
+        </button>
+        <NavLink to="/estoque" className={({ isActive }) => `flex flex-col items-center gap-0.5 py-2 text-[11px] ${isActive ? 'text-ink font-semibold' : 'text-muted'}`}>
+          <Boxes size={20} />Estoque
+        </NavLink>
+        <button onClick={() => setMais(true)} className="flex flex-col items-center gap-0.5 py-2 text-[11px] text-muted"><MoreHorizontal size={20} />Mais</button>
+      </nav>
+
+      {mais && (
+        <div className="fixed inset-0 z-50 bg-ink/40 md:hidden" onClick={() => setMais(false)}>
+          <div className="absolute inset-x-0 bottom-0 rounded-t-xl bg-panel p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]" onClick={(e) => e.stopPropagation()}>
+            {itens.slice(3).map(({ to, label, icon: Icon }) => (
+              <NavLink key={to} to={to} onClick={() => setMais(false)} className="flex items-center gap-3 rounded-box px-3 py-3 text-[15px] hover:bg-line/40"><Icon size={18} />{label}</NavLink>
+            ))}
+            <button onClick={() => supabase.auth.signOut()} className="flex w-full items-center gap-3 rounded-box px-3 py-3 text-[15px] text-muted"><LogOut size={18} />Sair</button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}

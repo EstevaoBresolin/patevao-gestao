@@ -1,0 +1,3 @@
+{ "name": "Patevão Gestão", "short_name": "Patevão", "start_url": "/", "display": "standalone",
+  "background_color": "#EEF0F2", "theme_color": "#1C232B",
+  "icons": [{ "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml" }] }
