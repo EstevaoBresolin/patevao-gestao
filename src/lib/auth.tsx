@@ -29,12 +29,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => data.subscription.unsubscribe()
   }, [])
 
+  // Ao voltar para a aba o Supabase renova o token e entrega um objeto de sessão novo.
+  // Só recarregamos o perfil quando o usuário muda; senão a tela inteira era desmontada
+  // ("Carregando…") e qualquer modal aberto perdia o que estava digitado.
+  const userId = session?.user.id ?? null
   useEffect(() => {
-    if (!session) { setPerfil(null); return }
+    if (!userId) { setPerfil(null); return }
     setCarregando(true)
-    supabase.from('usuario').select('perfil,nome').eq('id', session.user.id).maybeSingle()
+    supabase.from('usuario').select('perfil,nome').eq('id', userId).maybeSingle()
       .then(({ data }) => { setPerfil((data?.perfil as Perfil) ?? 'pendente'); setNome(data?.nome ?? ''); setCarregando(false) })
-  }, [session])
+  }, [userId])
 
   const fimRecuperacao = () => {
     setRecuperando(false)

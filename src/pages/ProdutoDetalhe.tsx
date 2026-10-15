@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
@@ -13,7 +13,9 @@ type Item = { id: string; material_id: string; quantidade: number; perc_perda: n
 export default function ProdutoDetalhe() {
   const { id } = useParams()
   const toast = useToast()
+  const navigate = useNavigate()
   const [editar, setEditar] = useState(false)
+  const [itemEdit, setItemEdit] = useState<Record<string, { quantidade?: string; perc_perda?: string }>>({})
   const prod = useLoad<Produto>(() => supabase.from('vw_produto_estoque').select('*').eq('id', id!).single(), [id])
   const ficha = useLoad<Item[]>(() => supabase.from('ficha_tecnica_item').select('*, material(*)').eq('produto_id', id!).not('material_id', 'is', null), [id])
   const materiais = useLoad<Material[]>(() => supabase.from('material').select('*').eq('ativo', true).order('nome'), [])
@@ -47,6 +49,18 @@ export default function ProdutoDetalhe() {
     const { error } = await supabase.from('ficha_tecnica_item').delete().eq('id', itemId)
     if (error) return setErro(erroMsg(error))
     ficha.recarregar()
+  }
+  async function salvarItem(i: Item) {
+    const e = itemEdit[i.id]
+    if (!e) return
+    const quantidade = e.quantidade !== undefined ? parseNum(e.quantidade) : Number(i.quantidade)
+    const perc_perda = e.perc_perda !== undefined ? parseNum(e.perc_perda) : Number(i.perc_perda)
+    if (quantidade <= 0) return setErro('A quantidade precisa ser maior que zero. Para tirar o material da ficha, use a lixeira.')
+    if (quantidade === Number(i.quantidade) && perc_perda === Number(i.perc_perda)) return
+    const { error } = await supabase.from('ficha_tecnica_item').update({ quantidade, perc_perda }).eq('id', i.id)
+    if (error) return setErro(erroMsg(error))
+    setItemEdit(({ [i.id]: _, ...resto }) => resto)
+    toast('Ficha técnica atualizada.'); ficha.recarregar()
   }
   async function atualizarCustoPadrao() {
     const { error } = await supabase.from('produto').update({ custo_padrao: Math.round(custoFicha * 10000) / 10000 }).eq('id', id!)
@@ -85,13 +99,26 @@ export default function ProdutoDetalhe() {
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Panel title="Ficha técnica (por unidade)"
           actions={itens.length > 0 && Math.abs(custoFicha - Number(p.custo_padrao)) > 0.01 && Number(p.custo_medio) === 0 && <Button size="sm" onClick={atualizarCustoPadrao}>Usar custo da ficha</Button>}>
+          {itens.length > 0 && <p className="border-b border-line px-4 py-2 text-xs text-muted">Para corrigir, altere a quantidade ou a perda e clique fora do campo.</p>}
           {itens.length === 0 ? <Empty title="Nenhum material cadastrado">Adicione os materiais que uma unidade consome. Assim a produção baixa o estoque deles e o custo sai certo.</Empty> : (
             <Table head={<tr><th>Material</th><th className="text-right">Qtd.</th><th className="text-right">Perda</th><th className="text-right">Custo</th><th /></tr>}>
               {itens.map((i) => (
                 <tr key={i.id}>
                   <td>{i.material?.nome}</td>
-                  <td className="num text-right whitespace-nowrap">{qty(i.quantidade)} {i.material?.unidade_uso}</td>
-                  <td className="num text-right">{qty(i.perc_perda)}%</td>
+                  <td className="whitespace-nowrap">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <NumInput aria-label={`Quantidade de ${i.material?.nome}`} className="h-8 w-20" value={itemEdit[i.id]?.quantidade ?? String(Number(i.quantidade)).replace('.', ',')}
+                        onChange={(v) => setItemEdit({ ...itemEdit, [i.id]: { ...itemEdit[i.id], quantidade: v } })} onBlur={() => salvarItem(i)} />
+                      <span className="text-xs text-muted">{i.material?.unidade_uso}</span>
+                    </div>
+                  </td>
+                  <td>
+                    <div className="flex items-center justify-end gap-1.5">
+                      <NumInput aria-label={`Perda de ${i.material?.nome}`} className="h-8 w-16" value={itemEdit[i.id]?.perc_perda ?? String(Number(i.perc_perda)).replace('.', ',')}
+                        onChange={(v) => setItemEdit({ ...itemEdit, [i.id]: { ...itemEdit[i.id], perc_perda: v } })} onBlur={() => salvarItem(i)} />
+                      <span className="text-xs text-muted">%</span>
+                    </div>
+                  </td>
                   <td className="num text-right">{money(Number(i.quantidade) * (1 + Number(i.perc_perda) / 100) * Number(i.material?.custo_medio ?? 0))}</td>
                   <td className="w-10"><button aria-label="Remover" onClick={() => delItem(i.id)} className="text-muted hover:text-bad"><Trash2 size={15} /></button></td>
                 </tr>
@@ -152,7 +179,7 @@ export default function ProdutoDetalhe() {
           </Panel>
         </div>
       </div>
-      <ProdutoForm open={editar} produto={p} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); prod.recarregar() }} />
+      <ProdutoForm open={editar} produto={p} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); prod.recarregar() }} onDeleted={() => navigate('/produtos')} />
     </div>
   )
 }

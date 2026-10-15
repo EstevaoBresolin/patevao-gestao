@@ -3,7 +3,8 @@ import { Plus } from 'lucide-react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
 import type { Cliente, Fornecedor } from '../lib/types'
-import { Badge, Button, Empty, ErrorBox, Field, Input, Loading, Modal, PageHeader, Panel, Table, Textarea, useToast } from '../components/ui'
+import { Badge, BotaoExcluir, Button, Empty, ErrorBox, Field, Input, Loading, Modal, PageHeader, Panel, Table, Textarea, useConfirm, useToast } from '../components/ui'
+import { useAuth } from '../lib/auth'
 
 type Aba = 'fornecedores' | 'clientes'
 
@@ -24,6 +25,8 @@ export default function Cadastros() {
 
 function Fornecedores() {
   const toast = useToast()
+  const confirmar = useConfirm()
+  const { isAdmin } = useAuth()
   const { data, carregando, erro, recarregar } = useLoad<Fornecedor[]>(() => supabase.from('fornecedor').select('*').order('nome'), [])
   const [ed, setEd] = useState<Partial<Fornecedor> | null>(null)
   const [err, setErr] = useState<string | null>(null)
@@ -33,6 +36,13 @@ function Fornecedores() {
     const r = ed.id ? await supabase.from('fornecedor').update(row).eq('id', ed.id) : await supabase.from('fornecedor').insert(row)
     if (r.error) return setErr(erroMsg(r.error))
     toast('Fornecedor salvo.'); setEd(null); recarregar()
+  }
+  async function excluir() {
+    if (!ed?.id) return
+    if (!(await confirmar({ titulo: `Excluir ${ed.nome}?`, mensagem: 'Se o fornecedor já tiver compras ou materiais ligados a ele, não dá para excluir. Nesse caso, desmarque "Ativo".' }))) return
+    const { error } = await supabase.from('fornecedor').delete().eq('id', ed.id)
+    if (error) return setErr(erroMsg(error))
+    toast('Fornecedor excluído.'); setEd(null); recarregar()
   }
   return (
     <>
@@ -49,7 +59,7 @@ function Fornecedores() {
           </Table>
         )}
       </Panel>
-      <Modal open={!!ed} onClose={() => setEd(null)} title={ed?.id ? 'Editar fornecedor' : 'Novo fornecedor'} footer={<><Button onClick={() => setEd(null)}>Cancelar</Button><Button variant="primary" onClick={salvar}>Salvar</Button></>}>
+      <Modal open={!!ed} onClose={() => setEd(null)} title={ed?.id ? 'Editar fornecedor' : 'Novo fornecedor'} footer={<>{ed?.id && isAdmin && <BotaoExcluir onClick={excluir} />}<Button onClick={() => setEd(null)}>Cancelar</Button><Button variant="primary" onClick={salvar}>Salvar</Button></>}>
         {ed && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nome" className="sm:col-span-2"><Input value={ed.nome ?? ''} onChange={(e) => setEd({ ...ed, nome: e.target.value })} /></Field>
@@ -70,6 +80,8 @@ function Fornecedores() {
 
 function Clientes() {
   const toast = useToast()
+  const confirmar = useConfirm()
+  const { isAdmin } = useAuth()
   const { data, carregando, erro, recarregar } = useLoad<(Cliente & { venda: { receita: number; status: string }[] })[]>(() => supabase.from('cliente').select('*, venda(receita,status)').order('nome'), [])
   const [ed, setEd] = useState<Partial<Cliente> | null>(null)
   const [busca, setBusca] = useState('')
@@ -80,6 +92,13 @@ function Clientes() {
     const r = ed.id ? await supabase.from('cliente').update(row).eq('id', ed.id) : await supabase.from('cliente').insert(row)
     if (r.error) return setErr(erroMsg(r.error))
     toast('Cliente salvo.'); setEd(null); recarregar()
+  }
+  async function excluir() {
+    if (!ed?.id) return
+    if (!(await confirmar({ titulo: `Excluir ${ed.nome}?`, mensagem: 'Clientes com vendas lançadas não podem ser excluídos, para não perder o histórico.' }))) return
+    const { error } = await supabase.from('cliente').delete().eq('id', ed.id)
+    if (error) return setErr(erroMsg(error))
+    toast('Cliente excluído.'); setEd(null); recarregar()
   }
   const lista = (data ?? []).filter((c) => !busca || `${c.nome} ${c.cidade ?? ''} ${c.whatsapp ?? ''}`.toLowerCase().includes(busca.toLowerCase()))
   return (
@@ -105,12 +124,13 @@ function Clientes() {
           </Table>
         )}
       </Panel>
-      <Modal open={!!ed} onClose={() => setEd(null)} title={ed?.id ? 'Editar cliente' : 'Novo cliente'} footer={<><Button onClick={() => setEd(null)}>Cancelar</Button><Button variant="primary" onClick={salvar}>Salvar</Button></>}>
+      <Modal open={!!ed} onClose={() => setEd(null)} title={ed?.id ? 'Editar cliente' : 'Novo cliente'} footer={<>{ed?.id && isAdmin && <BotaoExcluir onClick={excluir} />}<Button onClick={() => setEd(null)}>Cancelar</Button><Button variant="primary" onClick={salvar}>Salvar</Button></>}>
         {ed && (
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Nome" className="sm:col-span-2"><Input value={ed.nome ?? ''} onChange={(e) => setEd({ ...ed, nome: e.target.value })} /></Field>
             <Field label="WhatsApp"><Input inputMode="tel" value={ed.whatsapp ?? ''} onChange={(e) => setEd({ ...ed, whatsapp: e.target.value })} /></Field>
-            <Field label="Cidade"><Input value={ed.cidade ?? ''} onChange={(e) => setEd({ ...ed, cidade: e.target.value })} placeholder="Caxias do Sul" /></Field>
+            <Field label="Telefone"><Input inputMode="tel" value={ed.telefone ?? ''} onChange={(e) => setEd({ ...ed, telefone: e.target.value })} /></Field>
+            <Field label="Cidade" className="sm:col-span-2"><Input value={ed.cidade ?? ''} onChange={(e) => setEd({ ...ed, cidade: e.target.value })} placeholder="Caxias do Sul" /></Field>
             <Field label="Como conheceu" className="sm:col-span-2">
               <Input list="origens" value={ed.origem ?? ''} onChange={(e) => setEd({ ...ed, origem: e.target.value })} />
               <datalist id="origens"><option>Mercado Livre</option><option>Indicação</option><option>Instagram</option><option>WhatsApp</option><option>Feira</option></datalist>

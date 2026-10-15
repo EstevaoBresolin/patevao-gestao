@@ -1,21 +1,22 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Plus } from 'lucide-react'
+import { Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
-import { dataBR, money, parseNum, qty } from '../lib/fmt'
+import { dataBR, hoje, money, parseNum, qty } from '../lib/fmt'
 import type { Produto } from '../lib/types'
-import { Badge, Button, Empty, ErrorBox, Field, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, useToast } from '../components/ui'
+import { Badge, BotaoExcluir, Button, Empty, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, Textarea, useConfirm, useToast } from '../components/ui'
 
-type Ordem = { id: string; numero: number; produto_id: string; quantidade: number; status: 'planejada' | 'em_montagem' | 'concluida' | 'cancelada'; data_planejada: string; data_conclusao: string | null; custo_total_real: number | null; produto: { nome: string } | null }
+type Ordem = { id: string; numero: number; produto_id: string; quantidade: number; status: 'planejada' | 'em_montagem' | 'concluida' | 'cancelada'; data_planejada: string; data_conclusao: string | null; observacoes: string | null; custo_total_real: number | null; produto: { nome: string } | null }
 type Nec = { material_id: string; nome: string; unidade: string; necessario: number; saldo: number; falta: number }
 const ST = { planejada: { l: 'Planejada', t: 'neutral' }, em_montagem: { l: 'Em montagem', t: 'led' }, concluida: { l: 'Concluída', t: 'good' }, cancelada: { l: 'Cancelada', t: 'bad' } } as const
 
 export default function Producao() {
   const toast = useToast()
+  const confirmar = useConfirm()
   const ordens = useLoad<Ordem[]>(() => supabase.from('ordem_producao').select('*, produto(nome)').order('created_at', { ascending: false }).limit(100), [])
   const cap = useLoad<{ produto_id: string; produto: string; unidades: number; material_limitante: string }[]>(() => supabase.rpc('capacidade_producao'), [])
-  const [nova, setNova] = useState(false)
+  const [nova, setNova] = useState<Ordem | 'nova' | null>(null)
   const [concluir, setConcluir] = useState<Ordem | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const recarregar = () => { ordens.recarregar(); cap.recarregar() }
@@ -26,13 +27,21 @@ export default function Producao() {
     toast(s === 'cancelada' ? `Ordem #${o.numero} cancelada.` : `Ordem #${o.numero} em montagem.`); recarregar()
   }
 
+  async function excluir(o: Ordem) {
+    if (!(await confirmar({ titulo: `Excluir a ordem #${o.numero}?`, mensagem: 'Nada muda no estoque, porque a ordem não foi concluída.' }))) return
+    setErro(null)
+    const { error } = await supabase.rpc('excluir_ordem_producao', { p_id: o.id })
+    if (error) return setErro(erroMsg(error))
+    toast(`Ordem #${o.numero} excluída.`); setNova(null); recarregar()
+  }
+
   const abertas = (ordens.data ?? []).filter((o) => o.status === 'planejada' || o.status === 'em_montagem')
   const fechadas = (ordens.data ?? []).filter((o) => o.status === 'concluida' || o.status === 'cancelada')
 
   return (
     <div>
       <PageHeader title="Produção" sub="Ao concluir uma ordem, os materiais saem do estoque e os produtos prontos entram com o custo real."
-        actions={<Button variant="primary" size="sm" onClick={() => setNova(true)}><Plus size={15} /> Nova ordem</Button>} />
+        actions={<Button variant="primary" size="sm" onClick={() => setNova('nova')}><Plus size={15} /> Nova ordem</Button>} />
       <ErrorBox msg={erro} />
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1.5fr_1fr]">
         <div className="flex min-w-0 flex-col gap-5">
@@ -44,10 +53,12 @@ export default function Producao() {
                     <div>
                       <p className="font-medium">{qty(o.quantidade)} × {o.produto?.nome}</p>
                       <p className="text-sm text-muted">Ordem #{o.numero} · {dataBR(o.data_planejada)} <Badge tone={ST[o.status].t}>{ST[o.status].l}</Badge></p>
+                      {o.observacoes && <p className="mt-0.5 text-xs text-muted">{o.observacoes}</p>}
                     </div>
                     <div className="flex gap-2">
                       {o.status === 'planejada' && <Button size="sm" onClick={() => status(o, 'em_montagem')}>Iniciar montagem</Button>}
                       <Button size="sm" variant="primary" onClick={() => setConcluir(o)}>Concluir</Button>
+                      <Button size="sm" variant="ghost" aria-label={`Editar ordem ${o.numero}`} onClick={() => setNova(o)}><Pencil size={15} /></Button>
                       <Button size="sm" variant="ghost" onClick={() => status(o, 'cancelada')}>Cancelar</Button>
                     </div>
                   </li>
@@ -57,13 +68,14 @@ export default function Producao() {
           </Panel>
           <Panel title="Histórico">
             {fechadas.length === 0 ? <Empty title="Nenhuma ordem concluída ainda" /> : (
-              <Table head={<tr><th>Ordem</th><th>Produto</th><th className="text-right">Qtd.</th><th>Concluída</th><th className="text-right">Custo total</th><th className="text-right">Custo unit.</th></tr>}>
+              <Table head={<tr><th>Ordem</th><th>Produto</th><th className="text-right">Qtd.</th><th>Concluída</th><th className="text-right">Custo total</th><th className="text-right">Custo unit.</th><th /></tr>}>
                 {fechadas.map((o) => (
                   <tr key={o.id} className={o.status === 'cancelada' ? 'text-muted' : ''}>
                     <td className="num">#{o.numero}</td><td className="font-medium">{o.produto?.nome}</td><td className="num text-right">{qty(o.quantidade)}</td>
                     <td>{o.status === 'cancelada' ? <Badge tone="bad">Cancelada</Badge> : dataBR(o.data_conclusao)}</td>
                     <td className="num text-right">{o.custo_total_real != null ? money(o.custo_total_real) : '–'}</td>
                     <td className="num text-right">{o.custo_total_real != null ? money(Number(o.custo_total_real) / Number(o.quantidade)) : '–'}</td>
+                    <td className="w-10">{o.status === 'cancelada' && <button aria-label={`Excluir ordem ${o.numero}`} onClick={() => excluir(o)} className="text-muted hover:text-bad"><Trash2 size={15} /></button>}</td>
                   </tr>
                 ))}
               </Table>
@@ -83,7 +95,7 @@ export default function Producao() {
           )}
         </Panel>
       </div>
-      <NovaOrdem open={nova} onClose={() => setNova(false)} onSaved={() => { setNova(false); recarregar() }} />
+      <NovaOrdem open={nova !== null} ordem={nova === 'nova' ? null : nova} onClose={() => setNova(null)} onSaved={() => { setNova(null); recarregar() }} onExcluir={excluir} />
       <Concluir ordem={concluir} onClose={() => setConcluir(null)} onSaved={() => { setConcluir(null); recarregar() }} />
     </div>
   )
@@ -110,14 +122,22 @@ function Necessidade({ nec, real, onReal }: { nec: Nec[]; real?: Record<string, 
   )
 }
 
-function NovaOrdem({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+function NovaOrdem({ open, ordem, onClose, onSaved, onExcluir }: { open: boolean; ordem: Ordem | null; onClose: () => void; onSaved: () => void; onExcluir: (o: Ordem) => void }) {
   const toast = useToast()
   const [produtos, setProdutos] = useState<Produto[]>([])
   const [pid, setPid] = useState('')
   const [q, setQ] = useState('1')
+  const [data, setData] = useState(hoje())
+  const [obs, setObs] = useState('')
   const [nec, setNec] = useState<Nec[] | null>(null)
   const [erro, setErro] = useState<string | null>(null)
-  useEffect(() => { if (open) supabase.from('produto').select('*').eq('ativo', true).order('nome').then(({ data }) => setProdutos((data ?? []) as Produto[])) }, [open])
+  useEffect(() => {
+    if (!open) return
+    supabase.from('produto').select('*').eq('ativo', true).order('nome').then(({ data }) => setProdutos((data ?? []) as Produto[]))
+    setErro(null)
+    setPid(ordem?.produto_id ?? ''); setQ(ordem ? String(Number(ordem.quantidade)).replace('.', ',') : '1')
+    setData(ordem?.data_planejada ?? hoje()); setObs(ordem?.observacoes ?? '')
+  }, [open, ordem])
   useEffect(() => {
     if (!pid || parseNum(q) <= 0) { setNec(null); return }
     supabase.rpc('necessidade_producao', { p_produto: pid, p_qtd: parseNum(q) }).then(({ data }) => setNec((data ?? []) as Nec[]))
@@ -126,19 +146,26 @@ function NovaOrdem({ open, onClose, onSaved }: { open: boolean; onClose: () => v
 
   async function salvar() {
     if (!pid || parseNum(q) <= 0) return setErro('Escolha o produto e a quantidade.')
-    const { data, error } = await supabase.from('ordem_producao').insert({ produto_id: pid, quantidade: parseNum(q) }).select('numero').single()
+    const row = { produto_id: pid, quantidade: parseNum(q), data_planejada: data || null, observacoes: obs.trim() || null }
+    const { data: r, error } = ordem
+      ? await supabase.from('ordem_producao').update(row).eq('id', ordem.id).select('numero').single()
+      : await supabase.from('ordem_producao').insert(row).select('numero').single()
     if (error) return setErro(erroMsg(error))
-    toast(`Ordem #${data.numero} criada.`); setPid(''); setQ('1'); onSaved()
+    toast(ordem ? `Ordem #${r.numero} salva.` : `Ordem #${r.numero} criada.`); onSaved()
   }
+  // Produto inativo ainda aparece na edição de uma ordem antiga dele.
+  const lista = ordem && !produtos.some((p) => p.id === ordem.produto_id) ? [...produtos, { id: ordem.produto_id, nome: ordem.produto?.nome ?? 'Produto' } as Produto] : produtos
   return (
-    <Modal open={open} onClose={onClose} title="Nova ordem de produção" wide
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={salvar}>Criar ordem</Button></>}>
-      <div className="grid gap-4 sm:grid-cols-[1fr_120px]">
-        <Field label="Produto"><Select value={pid} onChange={(e) => setPid(e.target.value)}><option value="">Escolha…</option>{produtos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</Select></Field>
+    <Modal open={open} onClose={onClose} title={ordem ? `Editar ordem #${ordem.numero}` : 'Nova ordem de produção'} wide
+      footer={<>{ordem && <BotaoExcluir onClick={() => onExcluir(ordem)} />}<Button onClick={onClose}>Cancelar</Button><Button variant="primary" onClick={salvar}>{ordem ? 'Salvar ordem' : 'Criar ordem'}</Button></>}>
+      <div className="grid gap-4 sm:grid-cols-[1fr_120px_160px]">
+        <Field label="Produto"><Select value={pid} onChange={(e) => setPid(e.target.value)}><option value="">Escolha…</option>{lista.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</Select></Field>
         <Field label="Quantidade"><NumInput value={q} onChange={setQ} /></Field>
+        <Field label="Data planejada"><Input type="date" value={data} onChange={(e) => setData(e.target.value)} /></Field>
+        <Field label="Observações" className="sm:col-span-3"><Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} /></Field>
       </div>
       {nec && <div className="mt-4"><Necessidade nec={nec} /></div>}
-      {falta && <p className="mt-3 text-sm text-warn">Falta material. Você pode criar a ordem agora e concluir quando a compra chegar.</p>}
+      {falta && <p className="mt-3 text-sm text-warn">Falta material. Você pode {ordem ? 'salvar' : 'criar'} a ordem agora e concluir quando a compra chegar.</p>}
       <div className="mt-3"><ErrorBox msg={erro} /></div>
     </Modal>
   )

@@ -2,12 +2,15 @@ import { useEffect, useState } from 'react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { parseNum } from '../lib/fmt'
 import type { Categoria, Produto } from '../lib/types'
-import { Button, ErrorBox, Field, Input, Modal, NumInput, Select, Textarea, useToast } from './ui'
+import { BotaoExcluir, Button, ErrorBox, Field, Input, Modal, NumInput, Select, Textarea, useConfirm, useToast } from './ui'
+import { useAuth } from '../lib/auth'
 
 const br = (n: number | null | undefined) => (n == null ? '' : String(Number(n)).replace('.', ','))
 
-export default function ProdutoForm({ open, onClose, onSaved, produto }: { open: boolean; onClose: () => void; onSaved: (id: string) => void; produto?: Produto | null }) {
+export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto }: { open: boolean; onClose: () => void; onSaved: (id: string) => void; onDeleted?: () => void; produto?: Produto | null }) {
   const toast = useToast()
+  const confirmar = useConfirm()
+  const { isAdmin } = useAuth()
   const [cats, setCats] = useState<Categoria[]>([])
   const [f, setF] = useState({ nome: '', sku: '', categoria_id: '', custo_padrao: '', custos_fixos_unit: '', estoque_minimo: '', anuncio_ml: '', tamanho: '', cor_led: '', observacoes: '', ativo: true })
   const [erro, setErro] = useState<string | null>(null)
@@ -42,11 +45,20 @@ export default function ProdutoForm({ open, onClose, onSaved, produto }: { open:
     toast(produto ? 'Produto salvo.' : 'Produto cadastrado.')
     onSaved(r.data.id)
   }
+  async function excluir() {
+    if (!produto) return
+    if (!(await confirmar({ titulo: `Excluir ${produto.nome}?`, mensagem: 'A ficha técnica e os preços dele também são apagados. Produto que já teve venda, produção ou movimentação de estoque não pode ser excluído; nesse caso, desmarque "Produto ativo".' }))) return
+    setBusy(true)
+    const { error } = await supabase.from('produto').delete().eq('id', produto.id)
+    setBusy(false)
+    if (error) return setErro(erroMsg(error))
+    toast('Produto excluído.'); onDeleted?.()
+  }
   const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v })
 
   return (
     <Modal open={open} onClose={onClose} title={produto ? 'Editar produto' : 'Novo produto'} wide
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{produto ? 'Salvar' : 'Cadastrar produto'}</Button></>}>
+      footer={<>{produto && isAdmin && onDeleted && <BotaoExcluir disabled={busy} onClick={excluir} />}<Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{produto ? 'Salvar' : 'Cadastrar produto'}</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome" className="sm:col-span-2"><Input value={f.nome} onChange={(e) => set('nome')(e.target.value)} placeholder="Prateleira LED 60 cm branca" /></Field>
         <Field label="SKU (código interno)"><Input value={f.sku} onChange={(e) => set('sku')(e.target.value)} placeholder="PRAT-60-BR" /></Field>

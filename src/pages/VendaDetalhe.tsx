@@ -5,7 +5,7 @@ import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
 import { dataBR, dataHoraBR, money, parseNum, percent, qty } from '../lib/fmt'
 import { STATUS_VENDA, type Venda } from '../lib/types'
-import { Badge, Button, ErrorBox, Field, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, Textarea, useToast } from '../components/ui'
+import { Badge, Button, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, Textarea, useToast } from '../components/ui'
 import Composicao from '../components/Composicao'
 
 type Det = Venda & {
@@ -22,6 +22,8 @@ export default function VendaDetalhe() {
   const [motivo, setMotivo] = useState('')
   const [destino, setDestino] = useState<'estoque' | 'perda'>('estoque')
   const [c, setC] = useState({ perc_taxa: '', tarifa_fixa: '', frete: '', perc_imposto: '', desconto: '', outros_custos: '' })
+  const [d, setD] = useState({ data: '', pedido_externo: '', cliente_id: '', forma_pagamento: '', observacoes: '' })
+  const clientes = useLoad<{ id: string; nome: string }[]>(() => supabase.from('cliente').select('id,nome').order('nome'), [])
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -38,6 +40,7 @@ export default function VendaDetalhe() {
   }
   const abrirCustos = () => {
     setC({ perc_taxa: br(v.perc_taxa), tarifa_fixa: br(v.tarifa_fixa), frete: br(v.frete), perc_imposto: br(v.perc_imposto), desconto: br(v.desconto), outros_custos: br(v.outros_custos) })
+    setD({ data: v.data, pedido_externo: v.pedido_externo ?? '', cliente_id: v.cliente_id ?? '', forma_pagamento: v.forma_pagamento ?? '', observacoes: v.observacoes ?? '' })
     setErr(null); setModal('custos')
   }
 
@@ -50,7 +53,7 @@ export default function VendaDetalhe() {
           <>
             {v.status === 'aberta' && <Button size="sm" onClick={() => run(() => supabase.rpc('mudar_status_venda', { p_id: v.id, p_status: 'enviada' }), 'Venda marcada como enviada.')}>Marcar como enviada</Button>}
             {v.status !== 'entregue' && <Button size="sm" onClick={() => run(() => supabase.rpc('mudar_status_venda', { p_id: v.id, p_status: 'entregue' }), 'Venda marcada como entregue.')}>Marcar como entregue</Button>}
-            <Button size="sm" onClick={abrirCustos}>Corrigir custos</Button>
+            <Button size="sm" onClick={abrirCustos}>Editar venda</Button>
             <Button size="sm" onClick={() => { setErr(null); setModal('devolver') }}>Registrar devolução</Button>
             <Button size="sm" variant="ghost" className="text-bad" onClick={() => { setErr(null); setModal('cancelar') }}>Cancelar venda</Button>
           </>
@@ -125,10 +128,29 @@ export default function VendaDetalhe() {
         </div>
       </Modal>
 
-      <Modal open={modal === 'custos'} onClose={() => setModal(null)} title="Corrigir custos da venda"
-        footer={<><Button onClick={() => setModal(null)}>Voltar</Button><Button variant="primary" disabled={busy} onClick={() => run(() => supabase.rpc('atualizar_custos_venda', { p_id: v.id, p: Object.fromEntries(Object.entries(c).map(([k, x]) => [k, parseNum(x)])) }), 'Custos atualizados e lucro recalculado.')}>Salvar e recalcular</Button></>}>
-        <p className="mb-4 text-sm text-muted">Use quando o valor real cobrado pelo canal ou pelo frete for diferente do lançado.</p>
-        <div className="grid grid-cols-2 gap-4">
+      <Modal open={modal === 'custos'} onClose={() => setModal(null)} title={`Editar venda #${v.numero}`} wide
+        footer={<><Button onClick={() => setModal(null)}>Voltar</Button><Button variant="primary" disabled={busy} onClick={() => run(() => supabase.rpc('atualizar_custos_venda', { p_id: v.id, p: { ...Object.fromEntries(Object.entries(c).map(([k, x]) => [k, parseNum(x)])), ...d } }), 'Venda atualizada e lucro recalculado.')}>Salvar e recalcular</Button></>}>
+        <p className="mb-4 text-sm text-muted">Produtos e quantidades não mudam aqui, porque já baixaram o estoque. Se o item estiver errado, cancele a venda e lance de novo.</p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Data"><Input type="date" value={d.data} onChange={(e) => setD({ ...d, data: e.target.value })} /></Field>
+          <Field label="Nº do pedido no canal"><Input value={d.pedido_externo} onChange={(e) => setD({ ...d, pedido_externo: e.target.value })} /></Field>
+          <Field label="Cliente">
+            <Select value={d.cliente_id} onChange={(e) => setD({ ...d, cliente_id: e.target.value })}>
+              <option value="">Sem cliente</option>
+              {(clientes.data ?? []).map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
+            </Select>
+          </Field>
+          <Field label="Forma de pagamento">
+            <Select value={d.forma_pagamento} onChange={(e) => setD({ ...d, forma_pagamento: e.target.value })}>
+              <option value="">Pelo canal</option>
+              {['Pix', 'Dinheiro', 'Cartão de débito', 'Cartão de crédito', 'Transferência'].map((x) => <option key={x}>{x}</option>)}
+              {d.forma_pagamento && !['Pix', 'Dinheiro', 'Cartão de débito', 'Cartão de crédito', 'Transferência'].includes(d.forma_pagamento) && <option>{d.forma_pagamento}</option>}
+            </Select>
+          </Field>
+          <Field label="Observações" className="sm:col-span-2"><Textarea value={d.observacoes} onChange={(e) => setD({ ...d, observacoes: e.target.value })} rows={2} /></Field>
+        </div>
+        <p className="mb-3 mt-5 text-sm font-medium">Custos</p>
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
           <Field label="Taxa do canal (%)"><NumInput value={c.perc_taxa} onChange={(x) => setC({ ...c, perc_taxa: x })} /></Field>
           <Field label="Frete (R$)"><NumInput value={c.frete} onChange={(x) => setC({ ...c, frete: x })} /></Field>
           <Field label="Tarifa fixa (R$)"><NumInput value={c.tarifa_fixa} onChange={(x) => setC({ ...c, tarifa_fixa: x })} /></Field>

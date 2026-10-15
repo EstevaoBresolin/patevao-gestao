@@ -166,6 +166,31 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 }
 export const useToast = () => useContext(ToastCtx)
 
+/* ---------------- Confirmação ---------------- */
+type ConfirmOpts = { titulo: string; mensagem?: ReactNode; confirmar?: string; perigo?: boolean }
+const ConfirmCtx = createContext<(o: ConfirmOpts) => Promise<boolean>>(async () => false)
+/** Caixa de confirmação (ex.: antes de excluir). Uso: `if (!(await confirmar({ titulo: 'Excluir?' }))) return` */
+export function ConfirmProvider({ children }: { children: ReactNode }) {
+  const [pedido, setPedido] = useState<(ConfirmOpts & { resolve: (v: boolean) => void }) | null>(null)
+  const confirmar = useCallback((o: ConfirmOpts) => new Promise<boolean>((resolve) => setPedido({ ...o, resolve })), [])
+  const fechar = (v: boolean) => { pedido?.resolve(v); setPedido(null) }
+  return (
+    <ConfirmCtx.Provider value={confirmar}>
+      {children}
+      <Modal open={!!pedido} onClose={() => fechar(false)} title={pedido?.titulo ?? ''}
+        footer={<><Button onClick={() => fechar(false)}>Voltar</Button><Button variant={pedido?.perigo === false ? 'primary' : 'danger'} onClick={() => fechar(true)}>{pedido?.confirmar ?? 'Excluir'}</Button></>}>
+        <div className="text-sm text-muted">{pedido?.mensagem ?? 'Essa ação não pode ser desfeita.'}</div>
+      </Modal>
+    </ConfirmCtx.Provider>
+  )
+}
+export const useConfirm = () => useContext(ConfirmCtx)
+
+/** Botão de excluir alinhado à esquerda no rodapé de um modal. */
+export function BotaoExcluir({ onClick, disabled, children = 'Excluir' }: { onClick: () => void; disabled?: boolean; children?: ReactNode }) {
+  return <Button variant="ghost" className="mr-auto text-bad hover:text-bad" disabled={disabled} onClick={onClick}>{children}</Button>
+}
+
 /* ---------------- Indicador ---------------- */
 export function Stat({ label, value, delta, tone }: { label: string; value: ReactNode; delta?: number | null; tone?: 'good' | 'bad' }) {
   return (

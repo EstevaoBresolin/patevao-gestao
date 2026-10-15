@@ -4,7 +4,8 @@ import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
 import { money, parseNum, qty } from '../lib/fmt'
 import { UNIDADES, type Categoria, type Fornecedor, type Material } from '../lib/types'
-import { Badge, Button, Empty, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, Textarea, useToast } from '../components/ui'
+import { Badge, BotaoExcluir, Button, Empty, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, Textarea, useConfirm, useToast } from '../components/ui'
+import { useAuth } from '../lib/auth'
 
 const br = (n: number | null | undefined) => (n == null ? '' : String(Number(n)).replace('.', ','))
 
@@ -61,6 +62,8 @@ export default function Materiais() {
 
 function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; material: Material | null; onClose: () => void; onSaved: () => void }) {
   const toast = useToast()
+  const confirmar = useConfirm()
+  const { isAdmin } = useAuth()
   const [cats, setCats] = useState<Categoria[]>([])
   const [forns, setForns] = useState<Fornecedor[]>([])
   const vazio = { nome: '', sku: '', categoria_id: '', unidade_uso: 'un', unidade_compra: 'un', fator_conversao: '1', fornecedor_padrao_id: '', estoque_minimo: '', localizacao: '', observacoes: '', ativo: true, saldo_inicial: '', custo_inicial: '' }
@@ -100,12 +103,21 @@ function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; mat
     toast(material ? 'Material salvo.' : 'Material cadastrado.')
     onSaved()
   }
+  async function excluir() {
+    if (!material) return
+    if (!(await confirmar({ titulo: `Excluir ${material.nome}?`, mensagem: 'Só dá para excluir material que nunca teve movimentação de estoque, compra ou ficha técnica. Se já foi usado, desmarque "Material ativo" para ele sumir das listas.' }))) return
+    setBusy(true)
+    const { error } = await supabase.from('material').delete().eq('id', material.id)
+    setBusy(false)
+    if (error) return setErro(erroMsg(error))
+    toast('Material excluído.'); onSaved()
+  }
   const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v })
   const conv = f.unidade_compra !== f.unidade_uso
 
   return (
     <Modal open={open} onClose={onClose} title={material ? material.nome : 'Novo material'} wide
-      footer={<><Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{material ? 'Salvar' : 'Cadastrar material'}</Button></>}>
+      footer={<>{material && isAdmin && <BotaoExcluir disabled={busy} onClick={excluir} />}<Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{material ? 'Salvar' : 'Cadastrar material'}</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome" className="sm:col-span-2"><Input value={f.nome} onChange={(e) => set('nome')(e.target.value)} placeholder="Fita LED 3000K 12V" /></Field>
         <Field label="SKU (código interno)"><Input value={f.sku} onChange={(e) => set('sku')(e.target.value)} /></Field>
