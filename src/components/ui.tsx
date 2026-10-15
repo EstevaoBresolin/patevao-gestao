@@ -1,14 +1,31 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode, type InputHTMLAttributes, type SelectHTMLAttributes, type ButtonHTMLAttributes, type TextareaHTMLAttributes } from 'react'
 import { X } from 'lucide-react'
+import type { MouseEvent as ReactMouseEvent } from 'react'
 
 const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(' ')
 
 /* ---------------- Botões ---------------- */
 type BtnProps = ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'ghost' | 'danger' | 'plain'; size?: 'sm' | 'md' }
-export function Button({ variant = 'plain', size = 'md', className, ...p }: BtnProps) {
+export function Button({ variant = 'plain', size = 'md', className, onClick, disabled, ...p }: BtnProps) {
+  // Se o onClick for assíncrono (salvar, excluir…), o botão fica desabilitado até terminar.
+  // Evita salvar duas vezes com clique duplo.
+  const [ocupado, setOcupado] = useState(false)
+  const montado = useRef(true)
+  useEffect(() => () => { montado.current = false }, [])
+  const clicar = (e: ReactMouseEvent<HTMLButtonElement>) => {
+    if (ocupado) return
+    const r = onClick?.(e) as unknown
+    if (r instanceof Promise) {
+      setOcupado(true)
+      r.finally(() => { if (montado.current) setOcupado(false) })
+    }
+  }
   return (
     <button
       {...p}
+      onClick={clicar}
+      disabled={disabled || ocupado}
+      aria-busy={ocupado || undefined}
       className={cx(
         'inline-flex items-center justify-center gap-2 rounded-box font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap',
         size === 'sm' ? 'h-8 px-3 text-sm' : 'h-10 px-4 text-[15px]',
@@ -119,7 +136,11 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
   closeRef.current = onClose
   useEffect(() => {
     if (!open) return
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current()
+    // Esc só fecha avisos/confirmações; formulários não, para não perder o que foi digitado.
+    const k = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || bodyRef.current?.querySelector('input,select,textarea')) return
+      closeRef.current()
+    }
     window.addEventListener('keydown', k)
     // Foca só ao abrir, e no primeiro campo do conteúdo (nunca no X do cabeçalho).
     const alvo = bodyRef.current?.querySelector<HTMLElement>('input:not([type=hidden]),select,textarea')
@@ -129,7 +150,7 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
   }, [open])
   if (!open) return null
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center sm:p-4">
       <div ref={ref} role="dialog" aria-modal="true" aria-label={title}
         className={cx('flex max-h-[92vh] w-full flex-col rounded-t-xl bg-panel shadow-2xl sm:rounded-xl', wide ? 'sm:max-w-3xl' : 'sm:max-w-lg')}>
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">

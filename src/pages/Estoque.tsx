@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Download } from 'lucide-react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
@@ -19,10 +19,19 @@ export default function Estoque() {
   const [busca, setBusca] = useState('')
   const f = (n: string) => !busca || n.toLowerCase().includes(busca.toLowerCase())
 
+  function exportar() {
+    const linhas = [
+      ...(prods.data ?? []).map((p) => ['Produto', p.sku, p.nome, p.saldo, 'un', p.estoque_minimo, Number(p.custo_medio) || Number(p.custo_padrao), p.valor_estoque]),
+      ...(mats.data ?? []).map((m) => ['Material', m.sku, m.nome, m.saldo, m.unidade_uso, m.estoque_minimo, m.custo_medio, m.valor_estoque]),
+    ]
+    baixarCSV(`estoque_${new Date().toISOString().slice(0, 10)}.csv`, ['Tipo', 'SKU', 'Nome', 'Saldo', 'Unidade', 'Mínimo', 'Custo médio', 'Valor'], linhas)
+  }
+
   const tabs: [Aba, string][] = [['produtos', 'Produtos prontos'], ['materiais', 'Materiais'], ['movimentos', 'Movimentações'], ['inventario', 'Inventário']]
   return (
     <div>
-      <PageHeader title="Estoque" sub={`${money((prods.data ?? []).reduce((s, p) => s + Number(p.valor_estoque ?? 0), 0))} em produtos · ${money((mats.data ?? []).reduce((s, m) => s + Number(m.valor_estoque ?? 0), 0))} em materiais`} />
+      <PageHeader title="Estoque" sub={`${money((prods.data ?? []).reduce((s, p) => s + Number(p.valor_estoque ?? 0), 0))} em produtos · ${money((mats.data ?? []).reduce((s, m) => s + Number(m.valor_estoque ?? 0), 0))} em materiais`}
+        actions={<Button size="sm" onClick={exportar}><Download size={15} /> Exportar estoque</Button>} />
       <div role="tablist" className="mb-5 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map(([k, l]) => (
           <button key={k} role="tab" aria-selected={aba === k} onClick={() => setAba(k)}
@@ -89,6 +98,8 @@ function Movimentar({ alvo, onClose, onSaved }: { alvo: Alvo | null; onClose: ()
   const [motivo, setMotivo] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // Cada item abre o formulário limpo (antes ficava o que foi digitado para o item anterior).
+  useEffect(() => { setTipo('entrada_manual'); setQ(''); setCusto(''); setMotivo(''); setErro(null) }, [alvo?.id, alvo?.tipo])
   if (!alvo) return null
   const ajuste = tipo === 'ajuste'
   const delta = ajuste ? parseNum(q) - alvo.saldo : tipo === 'entrada_manual' ? parseNum(q) : -parseNum(q)

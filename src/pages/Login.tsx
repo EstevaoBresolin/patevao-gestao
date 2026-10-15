@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { URL_APP, useAuth } from '../lib/auth'
 import { Button, ErrorBox, Field, Input } from '../components/ui'
@@ -30,18 +30,30 @@ export default function Login() {
   const [erro, setErro] = useState<string | null>(null)
   const [aviso, setAviso] = useState<string | null>(null)
   const [enviando, setEnviando] = useState(false)
+  const [naoConfirmado, setNaoConfirmado] = useState(false)
+
+  // Link de e-mail vencido ou já usado volta com o erro no endereço: mostra em português.
+  useEffect(() => {
+    const h = new URLSearchParams(window.location.hash.slice(1))
+    if (h.get('error')) {
+      setErro(h.get('error_code') === 'otp_expired' ? 'Esse link venceu ou já foi usado. Peça outro abaixo.' : (h.get('error_description') ?? 'Link inválido.').replace(/\+/g, ' '))
+      history.replaceState(null, '', window.location.pathname)
+    }
+  }, [])
 
   const trocar = (m: Modo) => { setModo(m); setErro(null); setAviso(null) }
 
   async function enviar(e: FormEvent) {
-    e.preventDefault(); setErro(null); setAviso(null); setEnviando(true)
+    e.preventDefault(); setErro(null); setAviso(null); setNaoConfirmado(false); setEnviando(true)
     if (modo === 'entrar') {
       const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
-      if (error) setErro(error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.'
-        : error.message === 'Email not confirmed' ? 'Confirme seu e-mail pelo link que enviamos antes de entrar.' : erroMsg(error))
+      if (error?.message === 'Email not confirmed') { setErro('Seu e-mail ainda não foi confirmado. Abra o link que enviamos ou peça um novo abaixo.'); setNaoConfirmado(true) }
+      else if (error) setErro(error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : erroMsg(error))
     } else if (modo === 'criar') {
       const { data, error } = await supabase.auth.signUp({ email, password: senha, options: { data: { nome }, emailRedirectTo: `${URL_APP}/` } })
-      if (error) setErro(erroMsg(error))
+      if (error) setErro(error.message.includes('already registered') ? 'Este e-mail já tem conta. Use "Voltar para entrar" ou "Esqueci minha senha".' : erroMsg(error))
+      // Com e-mail já cadastrado o Supabase responde "ok" sem identidades, por segurança.
+      else if (data.user && data.user.identities?.length === 0) setErro('Este e-mail já tem conta. Use "Voltar para entrar" ou "Esqueci minha senha".')
       else if (!data.session) setAviso('Conta criada. Confirme pelo link enviado ao seu e-mail e depois entre.')
     } else {
       const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: `${URL_APP}/` })
@@ -49,6 +61,13 @@ export default function Login() {
       else setAviso('Se este e-mail tiver conta, enviamos um link para criar uma nova senha. Confira também o spam.')
     }
     setEnviando(false)
+  }
+
+  async function reenviarConfirmacao() {
+    setErro(null)
+    const { error } = await supabase.auth.resend({ type: 'signup', email, options: { emailRedirectTo: `${URL_APP}/` } })
+    if (error) return setErro(erroMsg(error))
+    setNaoConfirmado(false); setAviso('Enviamos um novo link de confirmação. Confira também o spam.')
   }
 
   const sub = modo === 'esqueci' ? 'Informe seu e-mail e enviaremos um link para criar uma nova senha.' : 'Estoque, produção e vendas da oficina em um lugar só.'
@@ -66,8 +85,9 @@ export default function Login() {
           <button type="button" className="-mt-2 self-end text-sm text-muted underline-offset-4 hover:text-ink hover:underline" onClick={() => trocar('esqueci')}>Esqueci minha senha</button>
         )}
         <ErrorBox msg={erro} />
+        {naoConfirmado && <Button type="button" size="sm" onClick={reenviarConfirmacao}>Reenviar e-mail de confirmação</Button>}
         {aviso && <p className="rounded-box bg-good/10 px-3 py-2 text-sm text-good">{aviso}</p>}
-        <Button variant="primary" disabled={enviando}>{modo === 'entrar' ? 'Entrar' : modo === 'criar' ? 'Criar conta' : 'Enviar link'}</Button>
+        <Button type="submit" variant="primary" disabled={enviando}>{enviando ? 'Aguarde…' : modo === 'entrar' ? 'Entrar' : modo === 'criar' ? 'Criar conta' : 'Enviar link'}</Button>
       </form>
       <button className="mt-4 text-sm text-muted underline-offset-4 hover:text-ink hover:underline" onClick={() => trocar(modo === 'criar' ? 'entrar' : modo === 'esqueci' ? 'entrar' : 'criar')}>
         {modo === 'entrar' ? 'Primeiro acesso? Criar conta' : 'Voltar para entrar'}

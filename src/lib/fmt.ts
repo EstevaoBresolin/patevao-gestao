@@ -15,7 +15,9 @@ export const num = (v: unknown) => {
 export const parseNum = (s: string) => {
   const t = s.trim()
   if (t === '') return 0
-  const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t)
+  // Formato brasileiro: vírgula é decimal e ponto é milhar ("1.234,56"). Sem vírgula, "1.000" também é mil.
+  const br = t.includes(',') || /^-?\d{1,3}(\.\d{3})+$/.test(t)
+  const n = Number(br ? t.replace(/\./g, '').replace(',', '.') : t)
   return Number.isFinite(n) ? n : 0
 }
 export const hoje = () => {

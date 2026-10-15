@@ -47,9 +47,9 @@ export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto
   }
   async function excluir() {
     if (!produto) return
-    if (!(await confirmar({ titulo: `Excluir ${produto.nome}?`, mensagem: 'A ficha técnica e os preços dele também são apagados. Produto que já teve venda, produção ou movimentação de estoque não pode ser excluído; nesse caso, desmarque "Produto ativo".' }))) return
+    if (!(await confirmar({ titulo: `Excluir ${produto.nome}?`, mensagem: 'A ficha técnica, os preços, o saldo inicial e os ajustes manuais dele também são apagados. Produto que já teve venda ou ordem de produção não pode ser excluído; nesse caso, desmarque "Produto ativo".' }))) return
     setBusy(true)
-    const { error } = await supabase.from('produto').delete().eq('id', produto.id)
+    const { error } = await supabase.rpc('excluir_produto', { p_id: produto.id })
     setBusy(false)
     if (error) return setErro(erroMsg(error))
     toast('Produto excluído.'); onDeleted?.()

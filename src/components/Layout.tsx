@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ShoppingCart, Boxes, Package, Hammer, Truck, Settings, LogOut, Plus, Wallet, Users, MoreHorizontal, Layers } from 'lucide-react'
+import { LayoutDashboard, ShoppingCart, Boxes, Package, Hammer, Truck, Settings, LogOut, Plus, Wallet, Users, MoreHorizontal, Layers, UserCircle } from 'lucide-react'
+import MinhaConta from './MinhaConta'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/auth'
@@ -21,6 +22,7 @@ export default function Layout() {
   const { nome, isAdmin } = useAuth()
   const navigate = useNavigate()
   const [mais, setMais] = useState(false)
+  const [conta, setConta] = useState(false)
   const itens = nav.filter((n) => !n.admin || isAdmin)
 
   return (
@@ -45,7 +47,7 @@ export default function Layout() {
           ))}
         </nav>
         <div className="flex items-center justify-between border-t border-line px-4 py-3 text-sm">
-          <span className="truncate text-muted">{nome}</span>
+          <button onClick={() => setConta(true)} className="flex min-w-0 items-center gap-1.5 text-muted hover:text-ink" title="Minha conta"><UserCircle size={16} className="shrink-0" /><span className="truncate">{nome || 'Minha conta'}</span></button>
           <button onClick={() => supabase.auth.signOut()} className="flex items-center gap-1.5 text-muted hover:text-ink"><LogOut size={16} /> Sair</button>
         </div>
       </aside>
@@ -76,12 +78,15 @@ export default function Layout() {
         <button onClick={() => setMais(true)} className="flex flex-col items-center gap-0.5 py-2 text-[11px] text-muted"><MoreHorizontal size={20} />Mais</button>
       </nav>
 
+      <MinhaConta open={conta} onClose={() => setConta(false)} />
+
       {mais && (
         <div className="fixed inset-0 z-50 bg-ink/40 md:hidden" onClick={() => setMais(false)}>
           <div className="absolute inset-x-0 bottom-0 rounded-t-xl bg-panel p-3 pb-[calc(env(safe-area-inset-bottom)+12px)]" onClick={(e) => e.stopPropagation()}>
             {itens.slice(3).map(({ to, label, icon: Icon }) => (
               <NavLink key={to} to={to} onClick={() => setMais(false)} className="flex items-center gap-3 rounded-box px-3 py-3 text-[15px] hover:bg-line/40"><Icon size={18} />{label}</NavLink>
             ))}
+            <button onClick={() => { setMais(false); setConta(true) }} className="flex w-full items-center gap-3 rounded-box px-3 py-3 text-[15px] hover:bg-line/40"><UserCircle size={18} />Minha conta</button>
             <button onClick={() => supabase.auth.signOut()} className="flex w-full items-center gap-3 rounded-box px-3 py-3 text-[15px] text-muted"><LogOut size={18} />Sair</button>
           </div>
         </div>

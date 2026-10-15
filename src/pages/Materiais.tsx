@@ -107,9 +107,9 @@ function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; mat
   }
   async function excluir() {
     if (!material) return
-    if (!(await confirmar({ titulo: `Excluir ${material.nome}?`, mensagem: 'Só dá para excluir material que nunca teve movimentação de estoque, compra ou ficha técnica. Se já foi usado, desmarque "Material ativo" para ele sumir das listas.' }))) return
+    if (!(await confirmar({ titulo: `Excluir ${material.nome}?`, mensagem: 'O saldo inicial, ajustes manuais e contagens de inventário dele também são apagados. Se o material já foi usado em compra, produção ou ficha técnica, não dá para excluir; nesse caso, desmarque "Material ativo".' }))) return
     setBusy(true)
-    const { error } = await supabase.from('material').delete().eq('id', material.id)
+    const { error } = await supabase.rpc('excluir_material', { p_id: material.id })
     setBusy(false)
     if (error) return setErro(erroMsg(error))
     toast('Material excluído.'); onSaved()
