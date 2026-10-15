@@ -13,6 +13,7 @@ type Det = Venda & {
   venda_item: { id: string; quantidade: number; preco_unit: number; custo_unit_congelado: number; produto: { nome: string; sku: string | null } | null }[]
 }
 const br = (n: number) => String(n).replace('.', ',')
+const PAGTOS = ['Pix', 'Dinheiro', 'Cartão de débito', 'Cartão de crédito', 'Transferência']
 
 export default function VendaDetalhe() {
   const { id } = useParams()
@@ -143,8 +144,8 @@ export default function VendaDetalhe() {
           <Field label="Forma de pagamento">
             <Select value={d.forma_pagamento} onChange={(e) => setD({ ...d, forma_pagamento: e.target.value })}>
               <option value="">Pelo canal</option>
-              {['Pix', 'Dinheiro', 'Cartão de débito', 'Cartão de crédito', 'Transferência'].map((x) => <option key={x}>{x}</option>)}
-              {d.forma_pagamento && !['Pix', 'Dinheiro', 'Cartão de débito', 'Cartão de crédito', 'Transferência'].includes(d.forma_pagamento) && <option>{d.forma_pagamento}</option>}
+              {PAGTOS.map((x) => <option key={x}>{x}</option>)}
+              {d.forma_pagamento && !PAGTOS.includes(d.forma_pagamento) && <option>{d.forma_pagamento}</option>}
             </Select>
           </Field>
           <Field label="Observações" className="sm:col-span-2"><Textarea value={d.observacoes} onChange={(e) => setD({ ...d, observacoes: e.target.value })} rows={2} /></Field>
