@@ -113,13 +113,20 @@ export function Table({ head, children }: { head: ReactNode; children: ReactNode
 /* ---------------- Modal ---------------- */
 export function Modal({ open, onClose, title, children, footer, wide }: { open: boolean; onClose: () => void; title: string; children: ReactNode; footer?: ReactNode; wide?: boolean }) {
   const ref = useRef<HTMLDivElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  // Guarda o onClose mais recente sem refazer o efeito a cada render (o pai costuma passar uma função nova).
+  const closeRef = useRef(onClose)
+  closeRef.current = onClose
   useEffect(() => {
     if (!open) return
-    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && closeRef.current()
     window.addEventListener('keydown', k)
-    ref.current?.querySelector<HTMLElement>('input,select,textarea,button')?.focus()
+    // Foca só ao abrir, e no primeiro campo do conteúdo (nunca no X do cabeçalho).
+    const alvo = bodyRef.current?.querySelector<HTMLElement>('input:not([type=hidden]),select,textarea')
+      ?? ref.current?.querySelector<HTMLElement>('[data-modal-footer] button')
+    alvo?.focus()
     return () => window.removeEventListener('keydown', k)
-  }, [open, onClose])
+  }, [open])
   if (!open) return null
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-ink/40 sm:items-center sm:p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -129,8 +136,8 @@ export function Modal({ open, onClose, title, children, footer, wide }: { open: 
           <h2 className="wide text-lg font-semibold">{title}</h2>
           <button onClick={onClose} aria-label="Fechar" className="rounded p-1 text-muted hover:text-ink"><X size={18} /></button>
         </div>
-        <div className="overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
+        <div ref={bodyRef} className="overflow-y-auto px-5 py-4">{children}</div>
+        {footer && <div data-modal-footer className="flex justify-end gap-2 border-t border-line px-5 py-3">{footer}</div>}
       </div>
     </div>
   )

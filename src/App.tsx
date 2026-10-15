@@ -2,7 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './lib/auth'
 import { supabase } from './lib/supabase'
 import Layout from './components/Layout'
-import Login from './pages/Login'
+import Login, { NovaSenha } from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Vendas from './pages/Vendas'
 import NovaVenda from './pages/NovaVenda'
@@ -19,8 +19,9 @@ import Config from './pages/Config'
 import { Button } from './components/ui'
 
 export default function App() {
-  const { session, perfil, carregando, isAdmin } = useAuth()
+  const { session, perfil, carregando, isAdmin, recuperando } = useAuth()
   if (carregando) return <div className="flex min-h-screen items-center justify-center text-sm text-muted">Carregando…</div>
+  if (recuperando && session) return <NovaSenha />
   if (!session) return <Login />
   if (perfil === 'pendente')
     return (
