@@ -14,11 +14,12 @@ export default function Materiais() {
   const [busca, setBusca] = useState('')
   const [cat, setCat] = useState('')
   const [soBaixo, setSoBaixo] = useState(false)
+  const [inativos, setInativos] = useState(false)
   const { data, erro, carregando, recarregar } = useLoad<Material[]>(() => supabase.from('vw_material_estoque').select('*').order('nome'), [])
   const cats = useLoad<Categoria[]>(() => supabase.from('categoria').select('*').eq('tipo', 'material').order('nome'), [])
 
-  const lista = useMemo(() => (data ?? []).filter((m) => m.ativo && (!cat || m.categoria_id === cat) && (!soBaixo || m.situacao !== 'ok') &&
-    (!busca || `${m.nome} ${m.sku ?? ''}`.toLowerCase().includes(busca.toLowerCase()))), [data, busca, cat, soBaixo])
+  const lista = useMemo(() => (data ?? []).filter((m) => (inativos || m.ativo) && (!cat || m.categoria_id === cat) && (!soBaixo || m.situacao !== 'ok') &&
+    (!busca || `${m.nome} ${m.sku ?? ''}`.toLowerCase().includes(busca.toLowerCase()))), [data, busca, cat, soBaixo, inativos])
   const total = lista.reduce((s, m) => s + Number(m.valor_estoque ?? 0), 0)
 
   return (
@@ -29,6 +30,7 @@ export default function Materiais() {
         <Input placeholder="Buscar por nome ou SKU" value={busca} onChange={(e) => setBusca(e.target.value)} className="max-w-xs" />
         <Select value={cat} onChange={(e) => setCat(e.target.value)} className="w-auto"><option value="">Todas as categorias</option>{(cats.data ?? []).map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}</Select>
         <label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" checked={soBaixo} onChange={(e) => setSoBaixo(e.target.checked)} /> Só abaixo do mínimo</label>
+        <label className="flex items-center gap-2 text-sm text-muted"><input type="checkbox" checked={inativos} onChange={(e) => setInativos(e.target.checked)} /> Mostrar inativos</label>
       </div>
       <ErrorBox msg={erro} />
       <Panel>
@@ -41,8 +43,8 @@ export default function Materiais() {
             {lista.map((m) => {
               const dias = Number(m.consumo_diario) > 0 ? Number(m.saldo) / Number(m.consumo_diario) : null
               return (
-                <tr key={m.id} onClick={() => setEdit(m)} className="cursor-pointer hover:bg-line/30">
-                  <td><span className="font-medium">{m.nome}</span>{m.sku && <span className="ml-2 text-xs text-muted">{m.sku}</span>}{m.localizacao && <span className="block text-xs text-muted">{m.localizacao}</span>}</td>
+                <tr key={m.id} onClick={() => setEdit(m)} className={`cursor-pointer hover:bg-line/30 ${!m.ativo ? 'text-muted' : ''}`}>
+                  <td><span className="font-medium">{m.nome}</span>{!m.ativo && <span className="ml-2"><Badge>Inativo</Badge></span>}{m.sku && <span className="ml-2 text-xs text-muted">{m.sku}</span>}{m.localizacao && <span className="block text-xs text-muted">{m.localizacao}</span>}</td>
                   <td className="num whitespace-nowrap text-right"><span className="mr-2">{qty(m.saldo)} {m.unidade_uso}</span>{m.situacao !== 'ok' && <Badge tone={m.situacao === 'zerado' ? 'bad' : 'warn'}>{m.situacao === 'zerado' ? 'Zerado' : 'Baixo'}</Badge>}</td>
                   <td className="num text-right text-muted">{qty(m.estoque_minimo)}</td>
                   <td className="num whitespace-nowrap text-right">{dias == null ? <span className="text-muted">–</span> : `${Math.floor(dias)} dias`}</td>
