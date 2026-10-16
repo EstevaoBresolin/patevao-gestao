@@ -6,6 +6,7 @@ import { dataBR, hoje, money, parseNum, qty } from '../lib/fmt'
 import type { Categoria } from '../lib/types'
 import { Badge, BotaoExcluir, Button, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, useConfirm, useToast } from '../components/ui'
 import { useAuth } from '../lib/auth'
+import { PainelML } from '../components/MercadoLivre'
 
 type Canal = { id: string; nome: string; tipo: string; ativo: boolean; canal_taxa: Taxa[] }
 type Taxa = { id: string; perfil: string; perc_taxa: number; tarifa_fixa: number; tarifa_ate_preco: number | null; frete_padrao: number; vigente_desde: string; ativo: boolean }
@@ -16,6 +17,7 @@ export default function Config() {
     <div>
       <PageHeader title="Configurações" />
       <div className="flex min-w-0 flex-col gap-5">
+        <PainelML />
         <Canais />
         <div className="grid min-w-0 gap-5 lg:grid-cols-2"><Parametros /><Categorias /></div>
         <Usuarios />

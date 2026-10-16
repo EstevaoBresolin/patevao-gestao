@@ -7,6 +7,7 @@ import { dataBR, hoje, money, percent, somaDias } from '../lib/fmt'
 import { STATUS_VENDA, type Venda } from '../lib/types'
 import { Badge, Button, Empty, ErrorBox, Input, Loading, PageHeader, Panel, Select, Table } from '../components/ui'
 import { baixarCSV } from '../lib/csv'
+import { PendentesML } from '../components/MercadoLivre'
 
 type Linha = Venda & { canal: { nome: string } | null; cliente: { nome: string } | null; venda_item: { quantidade: number; produto: { nome: string } | null }[] }
 
@@ -20,7 +21,7 @@ export default function Vendas() {
   const [busca, setBusca] = useState('')
   const canais = useLoad(() => supabase.from('canal').select('id,nome').order('nome'), [])
 
-  const { data, erro, carregando } = useLoad<Linha[]>(() => {
+  const { data, erro, carregando, recarregar } = useLoad<Linha[]>(() => {
     let q = supabase.from('venda').select('*, canal(nome), cliente(nome), venda_item(quantidade, produto(nome))')
       .gte('data', ini).lte('data', fim).order('data', { ascending: false }).order('numero', { ascending: false })
     if (status) q = q.eq('status', status)
@@ -57,6 +58,7 @@ export default function Vendas() {
         <Select value={status} onChange={(e) => setStatus(e.target.value)}><option value="">Todas as situações</option>{Object.entries(STATUS_VENDA).map(([k, s]) => <option key={k} value={k}>{s.label}</option>)}</Select>
         <Input placeholder="Buscar nº, pedido, produto…" value={busca} onChange={(e) => setBusca(e.target.value)} className="col-span-2 sm:col-span-1" />
       </div>
+      <PendentesML onImportou={recarregar} />
       <ErrorBox msg={erro} />
       <Panel>
         {carregando && !data ? <Loading /> : lista.length === 0 ? (

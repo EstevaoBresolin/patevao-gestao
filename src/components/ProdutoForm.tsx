@@ -70,7 +70,7 @@ export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto
         </Field>
         <Field label="Custos fixos por unidade (R$)" hint="Embalagem, energia… somados ao custo da ficha."><NumInput value={f.custos_fixos_unit} onChange={set('custos_fixos_unit')} /></Field>
         <Field label="Estoque mínimo" hint="Avisa no painel quando o saldo chegar aqui."><NumInput value={f.estoque_minimo} onChange={set('estoque_minimo')} /></Field>
-        <Field label="Código do anúncio no Mercado Livre"><Input value={f.anuncio_ml} onChange={(e) => set('anuncio_ml')(e.target.value)} placeholder="MLB1234567890" /></Field>
+        <Field label="Código do anúncio no Mercado Livre" hint="Ex.: MLB1234567890. Anúncio com variações (cor/tamanho): MLB1234567890/ID-da-variação. Liga as vendas importadas a este produto."><Input value={f.anuncio_ml} onChange={(e) => set('anuncio_ml')(e.target.value)} placeholder="MLB1234567890" /></Field>
         <Field label="Observações" className="sm:col-span-2"><Textarea value={f.observacoes} onChange={(e) => set('observacoes')(e.target.value)} rows={2} /></Field>
         {produto && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo} onChange={(e) => setF({ ...f, ativo: e.target.checked })} /> Produto ativo (aparece nas vendas)</label>}
       </div>
