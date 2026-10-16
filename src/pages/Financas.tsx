@@ -8,11 +8,11 @@ import { Badge, BotaoExcluir, Button, Empty, ErrorBox, Field, Input, Loading, Mo
 import { chamar } from '../components/MercadoLivre'
 
 type Conta = { id: string; nome: string; saldo_inicial: number; saldo_em: string; padrao: boolean; recebe_ml: boolean; ativo: boolean; saldo: number }
-type Linha = { conta_id: string; conta_nome: string; data: string; valor: number; descricao: string; origem: 'manual' | 'transferencia' | 'despesa' | 'compra' | 'venda' | 'ml'; ref_id: string }
-type AReceber = { id: string; numero: number; data: string; pedido_externo: string | null; receita: number; liquido: number; estimado: boolean; ml_liberacao_em: string | null; status: string }
+type Linha = { conta_id: string; conta_nome: string; data: string; valor: number; descricao: string; origem: 'manual' | 'transferencia' | 'despesa' | 'compra' | 'venda' | 'ml' | 'ml_antigo'; ref_id: string }
+type AReceber = { id: string; numero: number | null; avulso: boolean; descricao: string | null; data: string; pedido_externo: string | null; receita: number; liquido: number; estimado: boolean; ml_liberacao_em: string | null; status: string }
 type Mov = { id?: string; conta_id: string; tipo: 'entrada' | 'saida'; valor: string; data: string; descricao: string; transferencia?: string | null }
 
-const ORIGEM: Record<Linha['origem'], string> = { manual: 'Lançamento', transferencia: 'Transferência', despesa: 'Despesa', compra: 'Compra', venda: 'Venda', ml: 'Mercado Livre' }
+const ORIGEM: Record<Linha['origem'], string> = { manual: 'Lançamento', transferencia: 'Transferência', despesa: 'Despesa', compra: 'Compra', venda: 'Venda', ml: 'Mercado Livre', ml_antigo: 'Mercado Livre (antes do sistema)' }
 const diaBR = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) : null)
 
 export default function Financas() {
@@ -107,7 +107,9 @@ export default function Financas() {
               {receber.map((r) => (
                 <tr key={r.id}>
                   <td className="num whitespace-nowrap">{r.ml_liberacao_em ? dataBR(diaBR(r.ml_liberacao_em)) : <span className="text-muted">a confirmar</span>}</td>
-                  <td><Link to={`/vendas/${r.id}`} className="font-medium hover:underline">#{r.numero}</Link> <span className="text-xs text-muted">vendida {dataBR(r.data)}</span></td>
+                  <td>{r.avulso
+                    ? <><span className="font-medium">Pedido {r.pedido_externo}</span> <span className="text-xs text-muted">vendido {dataBR(r.data)}, antes do sistema</span></>
+                    : <><Link to={`/vendas/${r.id}`} className="font-medium hover:underline">#{r.numero}</Link> <span className="text-xs text-muted">vendida {dataBR(r.data)}</span></>}</td>
                   <td className="num text-right">{money(r.liquido)}{r.estimado && <span className="block text-xs text-muted">estimado</span>}</td>
                 </tr>
               ))}
