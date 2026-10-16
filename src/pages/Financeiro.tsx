@@ -17,12 +17,17 @@ export default function Financeiro() {
   const fim = `${mes}-${String(fimD.getDate()).padStart(2, '0')}`
   const desp = useLoad<Despesa[]>(() => supabase.from('despesa').select('*, categoria(nome)').gte('data', ini).lte('data', fim).order('data', { ascending: false }), [mes])
   const res = useLoad<{ periodo: { lucro: number; faturamento: number } }>(() => supabase.rpc('dashboard', { p_inicio: ini, p_fim: fim }), [mes])
+  // Compras recebidas no mês: dinheiro que saiu do caixa, mas que só vira custo quando o produto é vendido.
+  const compras = useLoad<{ frete: number; outras_despesas: number; desconto: number; compra_item: { qtd_compra: number; preco_unit_compra: number }[] }[]>(
+    () => supabase.from('compra').select('frete, outras_despesas, desconto, compra_item(qtd_compra, preco_unit_compra)').eq('status', 'recebida').gte('data', ini).lte('data', fim), [mes])
   const cats = useLoad<Categoria[]>(() => supabase.from('categoria').select('*').eq('tipo', 'despesa').order('nome'), [])
   const [nova, setNova] = useState<{ id?: string; data: string; descricao: string; valor: string; categoria_id: string; recorrente: boolean; forma_pagamento: string } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
 
   const total = (desp.data ?? []).reduce((s, d) => s + Number(d.valor), 0)
   const lucroVendas = Number(res.data?.periodo.lucro ?? 0)
+  const totalCompras = (compras.data ?? []).reduce((s, c) => s + c.compra_item.reduce((t, i) => t + Number(i.qtd_compra) * Number(i.preco_unit_compra), 0)
+    + Number(c.frete) + Number(c.outras_despesas) - Number(c.desconto), 0)
 
   async function salvar() {
     if (!nova) return
@@ -57,10 +62,15 @@ export default function Financeiro() {
         actions={<><Input type="month" value={mes} onChange={(e) => setMes(e.target.value)} className="w-auto" /><Button size="sm" onClick={copiarRecorrentes}>Copiar recorrentes do mês anterior</Button><Button size="sm" variant="primary" onClick={() => { setErro(null); setNova({ data: hoje(), descricao: '', valor: '', categoria_id: '', recorrente: false, forma_pagamento: '' }) }}><Plus size={15} /> Nova despesa</Button></>} />
       <ErrorBox msg={erro} />
       <Panel className="mb-5">
-        <div className="num grid grid-cols-1 gap-px overflow-hidden rounded-box bg-line sm:grid-cols-3 [&>*]:bg-panel [&>*]:px-4 [&>*]:py-3.5">
+        <div className="num grid grid-cols-1 gap-px overflow-hidden rounded-box bg-line sm:grid-cols-2 lg:grid-cols-4 [&>*]:bg-panel [&>*]:px-4 [&>*]:py-3.5">
           <div><p className="text-sm text-muted">Lucro das vendas</p><p className="wide text-[22px] font-bold">{money(lucroVendas)}</p></div>
           <div><p className="text-sm text-muted">Despesas do mês</p><p className="wide text-[22px] font-bold">− {money(total)}</p></div>
           <div className="led-strip"><p className="text-sm text-muted">Resultado do mês</p><p className={`wide text-[22px] font-bold ${lucroVendas - total < 0 ? 'text-bad' : ''}`}>{money(lucroVendas - total)}</p></div>
+          <div>
+            <p className="text-sm text-muted">Compras de material</p>
+            <p className="wide text-[22px] font-bold text-muted">{money(totalCompras)}</p>
+            <p className="mt-0.5 text-xs text-muted">Saiu do caixa, mas não entra no resultado: vira custo quando o produto é vendido.</p>
+          </div>
         </div>
       </Panel>
       <Panel>
