@@ -5,11 +5,12 @@ import { useLoad } from '../lib/useQuery'
 import { dataBR, hoje, money, parseNum, qty } from '../lib/fmt'
 import type { Fornecedor, Material } from '../lib/types'
 import { Badge, Button, Empty, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, useConfirm, useToast } from '../components/ui'
+import { CampoConta } from '../components/Contas'
 
-type Compra = { id: string; numero: number; data: string; status: 'pedida' | 'recebida' | 'parcial' | 'cancelada'; fornecedor_id: string | null; criterio_rateio: string; forma_pagamento: string | null; frete: number; outras_despesas: number; desconto: number; nf_numero: string | null; fornecedor: { nome: string } | null; compra_item: { material_id: string; qtd_compra: number; preco_unit_compra: number; custo_unit_final: number | null; material: { nome: string; unidade_compra: string; unidade_uso: string } | null }[] }
+type Compra = { id: string; numero: number; data: string; status: 'pedida' | 'recebida' | 'parcial' | 'cancelada'; fornecedor_id: string | null; criterio_rateio: string; forma_pagamento: string | null; conta_id: string | null; frete: number; outras_despesas: number; desconto: number; nf_numero: string | null; fornecedor: { nome: string } | null; compra_item: { material_id: string; qtd_compra: number; preco_unit_compra: number; custo_unit_final: number | null; material: { nome: string; unidade_compra: string; unidade_uso: string } | null }[] }
 type ItemIni = { material_id: string; qtd: string; preco: string }
 /** Dados para abrir o formulário: compra nova (sem id, opcionalmente com itens sugeridos) ou edição de uma compra pedida. */
-type Ini = { id?: string; numero?: number; fornecedor_id: string; itens: ItemIni[]; data?: string; frete?: string; outras?: string; desconto?: string; rateio?: string; nf?: string; pagamento?: string }
+type Ini = { id?: string; numero?: number; fornecedor_id: string; itens: ItemIni[]; data?: string; frete?: string; outras?: string; desconto?: string; rateio?: string; nf?: string; pagamento?: string; conta?: string }
 const brs = (n: number) => String(Number(n)).replace('.', ',')
 const ST = { pedida: { l: 'Pedida', t: 'led' }, recebida: { l: 'Recebida', t: 'good' }, parcial: { l: 'Parcial', t: 'warn' }, cancelada: { l: 'Cancelada', t: 'bad' } } as const
 const totalCompra = (c: Compra) => c.compra_item.reduce((s, i) => s + Number(i.qtd_compra) * Number(i.preco_unit_compra), 0) + Number(c.frete) + Number(c.outras_despesas) - Number(c.desconto)
@@ -49,7 +50,7 @@ export default function Compras() {
   }
   const editar = (c: Compra) => setNova({
     id: c.id, numero: c.numero, fornecedor_id: c.fornecedor_id ?? '', data: c.data, frete: brs(c.frete), outras: brs(c.outras_despesas), desconto: brs(c.desconto),
-    rateio: c.criterio_rateio, nf: c.nf_numero ?? '', pagamento: c.forma_pagamento ?? '',
+    rateio: c.criterio_rateio, nf: c.nf_numero ?? '', pagamento: c.forma_pagamento ?? '', conta: c.conta_id ?? '',
     itens: c.compra_item.map((i) => ({ material_id: i.material_id, qtd: brs(i.qtd_compra), preco: brs(i.preco_unit_compra) })),
   })
   const sugerirQtd = (m: Material) => Math.max(1, Math.ceil((Number(m.estoque_minimo) * 2 - Number(m.saldo)) / Number(m.fator_conversao)))
@@ -128,7 +129,7 @@ function NovaCompra({ ini, onClose, onSaved }: { ini: Ini | null; onClose: () =>
   const toast = useToast()
   const [forns, setForns] = useState<Fornecedor[]>([])
   const [mats, setMats] = useState<Material[]>([])
-  const [f, setF] = useState({ fornecedor_id: '', data: hoje(), frete: '0', outras: '0', desconto: '0', rateio: 'valor', nf: '', pagamento: '' })
+  const [f, setF] = useState({ fornecedor_id: '', data: hoje(), frete: '0', outras: '0', desconto: '0', rateio: 'valor', nf: '', pagamento: '', conta: '' })
   const [itens, setItens] = useState<ItemIni[]>([])
   const [receberJa, setReceberJa] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -138,7 +139,7 @@ function NovaCompra({ ini, onClose, onSaved }: { ini: Ini | null; onClose: () =>
     if (!ini) return
     supabase.from('fornecedor').select('*').eq('ativo', true).order('nome').then(({ data }) => setForns((data ?? []) as Fornecedor[]))
     supabase.from('material').select('*').eq('ativo', true).order('nome').then(({ data }) => setMats((data ?? []) as Material[]))
-    setF({ fornecedor_id: ini.fornecedor_id, data: ini.data ?? hoje(), frete: ini.frete ?? '0', outras: ini.outras ?? '0', desconto: ini.desconto ?? '0', rateio: ini.rateio ?? 'valor', nf: ini.nf ?? '', pagamento: ini.pagamento ?? '' })
+    setF({ fornecedor_id: ini.fornecedor_id, data: ini.data ?? hoje(), frete: ini.frete ?? '0', outras: ini.outras ?? '0', desconto: ini.desconto ?? '0', rateio: ini.rateio ?? 'valor', nf: ini.nf ?? '', pagamento: ini.pagamento ?? '', conta: ini.conta ?? '' })
     setItens(ini.itens.length ? ini.itens : [{ material_id: '', qtd: '', preco: '' }])
     setReceberJa(!ini.id)
     setErro(null)
@@ -155,7 +156,7 @@ function NovaCompra({ ini, onClose, onSaved }: { ini: Ini | null; onClose: () =>
     setBusy(true); setErro(null)
     const cab = {
       fornecedor_id: f.fornecedor_id || null, data: f.data, frete: parseNum(f.frete), outras_despesas: parseNum(f.outras),
-      desconto: parseNum(f.desconto), criterio_rateio: f.rateio, nf_numero: f.nf || null, forma_pagamento: f.pagamento || null,
+      desconto: parseNum(f.desconto), criterio_rateio: f.rateio, nf_numero: f.nf || null, forma_pagamento: f.pagamento || null, conta_id: f.conta || null,
     }
     const c = ini?.id
       ? await supabase.from('compra').update(cab).eq('id', ini.id).eq('status', 'pedida').select('id, numero').single()
@@ -208,6 +209,7 @@ function NovaCompra({ ini, onClose, onSaved }: { ini: Ini | null; onClose: () =>
         <Field label="Dividir frete por"><Select value={f.rateio} onChange={(e) => setF({ ...f, rateio: e.target.value })}><option value="valor">Valor dos itens</option><option value="quantidade">Quantidade</option></Select></Field>
         <Field label="Nº da nota fiscal"><Input value={f.nf} onChange={(e) => setF({ ...f, nf: e.target.value })} /></Field>
         <Field label="Pagamento"><Select value={f.pagamento} onChange={(e) => setF({ ...f, pagamento: e.target.value })}><option value="">–</option><option>Pix</option><option>Boleto</option><option>Cartão de crédito</option><option>Dinheiro</option></Select></Field>
+        <CampoConta label="Saiu da conta" value={f.conta} onChange={(v) => setF({ ...f, conta: v })} />
       </div>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={receberJa} onChange={(e) => setReceberJa(e.target.checked)} /> Já recebi: dar entrada no estoque agora</label>

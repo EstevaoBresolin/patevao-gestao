@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, ShoppingCart, Boxes, Package, Hammer, Truck, Settings, LogOut, Plus, Wallet, Users, MoreHorizontal, Layers, UserCircle } from 'lucide-react'
+import { LayoutDashboard, ShoppingCart, Boxes, Package, Hammer, Truck, Settings, LogOut, Plus, Wallet, Users, MoreHorizontal, Layers, UserCircle, Landmark } from 'lucide-react'
 import MinhaConta from './MinhaConta'
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
@@ -14,6 +14,7 @@ const nav = [
   { to: '/materiais', label: 'Materiais', icon: Layers },
   { to: '/compras', label: 'Compras', icon: Truck },
   { to: '/cadastros', label: 'Fornecedores e clientes', icon: Users },
+  { to: '/financas', label: 'Finanças', icon: Landmark, admin: true },
   { to: '/financeiro', label: 'Despesas', icon: Wallet, admin: true },
   { to: '/config', label: 'Configurações', icon: Settings, admin: true },
 ]

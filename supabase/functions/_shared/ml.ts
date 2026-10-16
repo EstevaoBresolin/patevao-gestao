@@ -56,9 +56,9 @@ export async function token(db: SupabaseClient): Promise<string> {
   }
 }
 
-export async function ml(db: SupabaseClient, path: string) {
+export async function ml(db: SupabaseClient, path: string, base = API) {
   const tk = await token(db)
-  const r = await fetch(API + path, { headers: { Authorization: `Bearer ${tk}`, 'x-format-new': 'true' } })
+  const r = await fetch(base + path, { headers: { Authorization: `Bearer ${tk}`, ...(base === API && { 'x-format-new': 'true' }) } })
   const j = await r.json().catch(() => ({}))
   if (!r.ok) throw new Error(`Mercado Livre ${path}: ${j.message ?? r.status}`)
   return j
@@ -124,6 +124,27 @@ export async function atualizarEnvio(db: SupabaseClient, shipmentId: number) {
   return { vendas: vendas?.length ?? 0, orderId: s.order_id as number | undefined }
 }
 
+/**
+ * Quanto do pedido cai no Mercado Pago (já sem tarifa e frete) e quando é liberado,
+ * direto dos pagamentos do Mercado Pago. Grava na venda; se o MP não responder, a venda fica com a estimativa.
+ */
+export async function atualizarLiberacao(db: SupabaseClient, orderId: number, pedido?: any) {
+  try {
+    const o = pedido ?? await ml(db, `/orders/${orderId}`)
+    const pagos = (o.payments ?? []).filter((p: any) => p.status === 'approved')
+    if (!pagos.length) return false
+    let liquido = 0, quando: string | null = null, liberado = true
+    for (const p of pagos) {
+      const m = await ml(db, `/v1/payments/${p.id}`, 'https://api.mercadopago.com')
+      liquido += Number(m.transaction_details?.net_received_amount ?? 0)
+      if (m.money_release_date && (!quando || new Date(m.money_release_date) > new Date(quando))) quando = m.money_release_date
+      if (m.money_release_status !== 'released') liberado = false
+    }
+    const { error } = await db.from('venda').update({ ml_liquido: Math.round(liquido * 100) / 100, ml_liberacao_em: quando, ml_liberado: liberado }).eq('ml_order_id', orderId)
+    return !error
+  } catch { return false }
+}
+
 /** Lança (ou atualiza) a venda de um pedido do ML. Pedido que não dá para lançar vai para "Vendas do ML para conferir". */
 export async function importarPedido(db: SupabaseClient, orderId: number): Promise<string> {
   const o = await ml(db, `/orders/${orderId}`)
@@ -139,6 +160,7 @@ export async function importarPedido(db: SupabaseClient, orderId: number): Promi
   }
   if (existente) {
     if (o.shipping?.id) await atualizarEnvio(db, o.shipping.id)
+    await atualizarLiberacao(db, orderId, o)
     return 'ja_lancada'
   }
   if (o.status !== 'paid') return 'aguardando_pagamento'
@@ -203,6 +225,7 @@ export async function importarPedido(db: SupabaseClient, orderId: number): Promi
     },
   })
   if (error) return pendente(error.message)
+  if (vendaId) await atualizarLiberacao(db, orderId, o)
   return vendaId ? 'lancada' : 'erro'
 }
 

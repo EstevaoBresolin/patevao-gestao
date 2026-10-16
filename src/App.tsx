@@ -15,6 +15,7 @@ import Producao from './pages/Producao'
 import Compras from './pages/Compras'
 import Cadastros from './pages/Cadastros'
 import Financeiro from './pages/Financeiro'
+import Financas from './pages/Financas'
 import Config from './pages/Config'
 import { Button } from './components/ui'
 
@@ -46,6 +47,7 @@ export default function App() {
         <Route path="compras" element={<Compras />} />
         <Route path="cadastros" element={<Cadastros />} />
         {isAdmin && <Route path="financeiro" element={<Financeiro />} />}
+        {isAdmin && <Route path="financas" element={<Financas />} />}
         {isAdmin && <Route path="config" element={<Config />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>

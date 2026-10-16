@@ -12,7 +12,7 @@ type Ligacao = { id: string; anuncio: string; variacao: number | null; titulo: s
 type Alvo = { anuncio: string; variacao: number | null; titulo: string | null }
 type Pendente = { ml_order_id: number; motivo: string; criado_em: string; resumo: { data: string; comprador: string | null; total: number; itens: { mlb: string; titulo: string; qtd: number; preco: number; variacao: number | null }[] } }
 
-async function chamar(acao: string, extra: Record<string, unknown> = {}) {
+export async function chamar(acao: string, extra: Record<string, unknown> = {}) {
   const { data, error } = await supabase.functions.invoke('ml-sync', { body: { acao, ...extra } })
   if (error) {
     // Mensagem que a função devolveu, quando houver.
@@ -27,6 +27,7 @@ async function chamar(acao: string, extra: Record<string, unknown> = {}) {
 const RESULTADO: Record<string, string> = {
   lancada: 'lançadas', ja_lancada: 'já estavam lançadas', pendente: 'foram para conferir', cancelada: 'canceladas',
   ignorada: 'canceladas no ML (ignoradas)', aguardando_pagamento: 'aguardando pagamento', erro: 'com erro',
+  liberacoes: 'liberações conferidas no Mercado Pago',
 }
 
 /** Configurações → conexão com o Mercado Livre. */
@@ -56,7 +57,7 @@ export function PainelML() {
     setErro(null)
     try {
       const r = await chamar('sincronizar')
-      const partes = Object.entries(r).filter(([k]) => k !== 'total').map(([k, v]) => `${v} ${RESULTADO[k] ?? k}`)
+      const partes = Object.entries(r).filter(([k, v]) => k !== 'total' && v).map(([k, v]) => `${v} ${RESULTADO[k] ?? k}`)
       toast(r.total ? `${r.total} pedidos dos últimos 7 dias: ${partes.join(', ')}.` : 'Nenhum pedido nos últimos 7 dias.')
       st.recarregar()
     } catch (e) { setErro(erroMsg(e)) }

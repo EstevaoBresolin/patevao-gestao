@@ -6,6 +6,7 @@ import { hoje, money, parseNum, percent, qty } from '../lib/fmt'
 import { custoProduto, type Cliente, type Produto, type TaxaVigente } from '../lib/types'
 import { Button, ErrorBox, Field, Input, NumInput, PageHeader, Panel, Select, Textarea, useToast } from '../components/ui'
 import Composicao from '../components/Composicao'
+import { CampoConta } from '../components/Contas'
 
 type Linha = { key: number; produto_id: string; quantidade: string; preco: string }
 const fmtIn = (n: number) => (!Number.isFinite(n) ? '' : Number.isInteger(n) ? String(n) : n.toFixed(2).replace('.', ','))
@@ -33,6 +34,7 @@ export default function NovaVenda() {
   const [clienteId, setClienteId] = useState('')
   const [pagamento, setPagamento] = useState('')
   const [status, setStatus] = useState('aberta')
+  const [conta, setConta] = useState('')
   const [obs, setObs] = useState('')
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
@@ -124,6 +126,10 @@ export default function NovaVenda() {
         forma_pagamento: pagamento, observacoes: obs, itens,
       },
     })
+    if (!error && conta) {
+      const c = await supabase.rpc('definir_conta_venda', { p_venda: id, p_conta: conta })
+      if (c.error) toast(`Venda lançada, mas a conta não foi gravada: ${erroMsg(c.error)}`, 'bad')
+    }
     setSalvando(false)
     if (error) return setErro(erroMsg(error))
     const { data: v } = await supabase.from('venda').select('numero').eq('id', id as string).single()
@@ -227,6 +233,7 @@ export default function NovaVenda() {
                   <option>Pix</option><option>Dinheiro</option><option>Cartão de débito</option><option>Cartão de crédito</option><option>Transferência</option>
                 </Select>
               </Field>
+              <CampoConta label="Dinheiro entra na conta" value={conta} onChange={setConta} />
               <Field label="Observações" className="sm:col-span-2"><Textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} /></Field>
             </div>
           </Panel>

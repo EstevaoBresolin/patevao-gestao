@@ -1,6 +1,6 @@
 // Ações chamadas pelo sistema (usuário logado): link de conexão, sincronizar e reimportar um pedido.
 import { createClient } from 'npm:@supabase/supabase-js@2'
-import { admin, APP_ID, cors, importarPedido, json, ml, REDIRECT_URI } from '../_shared/ml.ts'
+import { admin, APP_ID, atualizarLiberacao, cors, importarPedido, json, ml, REDIRECT_URI } from '../_shared/ml.ts'
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -31,12 +31,22 @@ Deno.serve(async (req) => {
       const desde = new Date(Date.now() - 7 * 864e5).toISOString()
       const r = await ml(db, `/orders/search?seller=${c.ml_user_id}&order.date_created.from=${encodeURIComponent(desde)}&sort=date_desc&limit=50`)
       const cont: Record<string, number> = {}
+      const vistos = new Set<number>()
       for (const o of r.results ?? []) {
         let res: string
         try { res = await importarPedido(db, o.id) } catch { res = 'erro' }
         cont[res] = (cont[res] ?? 0) + 1
+        vistos.add(Number(o.id))
       }
-      return json({ total: (r.results ?? []).length, ...cont })
+      // Vendas mais antigas com dinheiro ainda não liberado: confere valor e data de liberação no Mercado Pago.
+      const { data: pend } = await db.from('venda').select('ml_order_id').not('ml_order_id', 'is', null).eq('ml_liberado', false)
+        .not('status', 'in', '(cancelada,devolvida)').limit(100)
+      let liberacoes = 0
+      for (const v of pend ?? []) {
+        if (vistos.has(Number(v.ml_order_id))) continue
+        if (await atualizarLiberacao(db, Number(v.ml_order_id))) liberacoes++
+      }
+      return json({ total: (r.results ?? []).length, ...cont, liberacoes })
     }
     return json({ erro: 'Ação inválida' }, 400)
   } catch (e) {
