@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, Copy, Pencil, Plus, Trash2 } from 'lucide-react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
 import { dataHoraBR, money, parseNum, percent, qty } from '../lib/fmt'
@@ -15,6 +15,7 @@ export default function ProdutoDetalhe() {
   const toast = useToast()
   const navigate = useNavigate()
   const [editar, setEditar] = useState(false)
+  const [duplicar, setDuplicar] = useState(false)
   const [itemEdit, setItemEdit] = useState<Record<string, { quantidade?: string; perc_perda?: string }>>({})
   const prod = useLoad<Produto>(() => supabase.from('vw_produto_estoque').select('*').eq('id', id!).single(), [id])
   const ficha = useLoad<Item[]>(() => supabase.from('ficha_tecnica_item').select('*, material(*)').eq('produto_id', id!).not('material_id', 'is', null), [id])
@@ -84,7 +85,7 @@ export default function ProdutoDetalhe() {
     <div>
       <Link to="/produtos" className="mb-3 inline-flex items-center gap-1.5 text-sm text-muted hover:text-ink"><ArrowLeft size={15} /> Produtos</Link>
       <PageHeader title={p.nome} sub={<>{p.sku && `${p.sku} · `}{p.atributos?.tamanho}{p.atributos?.cor_led && ` · ${p.atributos.cor_led}`}{!p.ativo && <span className="ml-2"><Badge>Inativo</Badge></span>}</>}
-        actions={<Button size="sm" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</Button>} />
+        actions={<><Button size="sm" onClick={() => setDuplicar(true)}><Copy size={15} /> Duplicar</Button><Button size="sm" onClick={() => setEditar(true)}><Pencil size={15} /> Editar</Button></>} />
       <ErrorBox msg={erro} />
 
       <Panel className="mb-5">
@@ -180,6 +181,7 @@ export default function ProdutoDetalhe() {
         </div>
       </div>
       <ProdutoForm open={editar} produto={p} onClose={() => setEditar(false)} onSaved={() => { setEditar(false); prod.recarregar() }} onDeleted={() => navigate('/produtos')} />
+      <ProdutoForm open={duplicar} copiaDe={p} onClose={() => setDuplicar(false)} onSaved={(novoId) => { setDuplicar(false); navigate(`/produtos/${novoId}`) }} />
     </div>
   )
 }

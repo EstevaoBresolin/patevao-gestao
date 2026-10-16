@@ -36,3 +36,6 @@ export const dataBR = (iso?: string | null) => {
 }
 export const dataHoraBR = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : ''
+
+/** Nome para comparar duplicados: ignora maiúsculas, acentos e espaços extras. */
+export const normNome = (s: string) => s.trim().replace(/\s+/g, ' ').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()

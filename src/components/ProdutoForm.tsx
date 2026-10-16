@@ -1,13 +1,17 @@
 import { useEffect, useState } from 'react'
 import { supabase, erroMsg } from '../lib/supabase'
-import { parseNum } from '../lib/fmt'
+import { normNome, parseNum } from '../lib/fmt'
 import type { Categoria, Produto } from '../lib/types'
 import { BotaoExcluir, Button, ErrorBox, Field, Input, Modal, NumInput, Select, Textarea, useConfirm, useToast } from './ui'
 import { useAuth } from '../lib/auth'
 
 const br = (n: number | null | undefined) => (n == null ? '' : String(Number(n)).replace('.', ','))
 
-export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto }: { open: boolean; onClose: () => void; onSaved: (id: string) => void; onDeleted?: () => void; produto?: Produto | null }) {
+/**
+ * Cadastro/edição de produto. Com `copiaDe`, abre como cadastro novo já preenchido
+ * com os dados daquele produto; ao salvar, a ficha técnica e os preços também são copiados.
+ */
+export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto, copiaDe }: { open: boolean; onClose: () => void; onSaved: (id: string) => void; onDeleted?: () => void; produto?: Produto | null; copiaDe?: Produto | null }) {
   const toast = useToast()
   const confirmar = useConfirm()
   const { isAdmin } = useAuth()
@@ -20,17 +24,24 @@ export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto
     if (!open) return
     supabase.from('categoria').select('*').eq('tipo', 'produto').order('nome').then(({ data }) => setCats((data ?? []) as Categoria[]))
     setErro(null)
+    const base = produto ?? copiaDe
     setF({
-      nome: produto?.nome ?? '', sku: produto?.sku ?? '', categoria_id: produto?.categoria_id ?? '',
-      custo_padrao: br(produto?.custo_padrao), custos_fixos_unit: br(produto?.custos_fixos_unit), estoque_minimo: br(produto?.estoque_minimo),
-      anuncio_ml: produto?.anuncio_ml ?? '', tamanho: produto?.atributos?.tamanho ?? '', cor_led: produto?.atributos?.cor_led ?? '',
-      observacoes: produto?.observacoes ?? '', ativo: produto?.ativo ?? true,
+      nome: copiaDe ? `${copiaDe.nome} (cópia)` : base?.nome ?? '',
+      // SKU e anúncio do ML identificam um produto só: na cópia começam vazios.
+      sku: copiaDe ? '' : base?.sku ?? '', categoria_id: base?.categoria_id ?? '',
+      custo_padrao: br(base?.custo_padrao), custos_fixos_unit: br(base?.custos_fixos_unit), estoque_minimo: br(base?.estoque_minimo),
+      anuncio_ml: copiaDe ? '' : base?.anuncio_ml ?? '', tamanho: base?.atributos?.tamanho ?? '', cor_led: base?.atributos?.cor_led ?? '',
+      observacoes: base?.observacoes ?? '', ativo: copiaDe ? true : base?.ativo ?? true,
     })
-  }, [open, produto])
+  }, [open, produto, copiaDe])
 
   async function salvar() {
     if (!f.nome.trim()) return setErro('Dê um nome ao produto.')
     setBusy(true); setErro(null)
+    const existentes = await supabase.from('produto').select('id,nome')
+    if (existentes.error) { setBusy(false); return setErro(erroMsg(existentes.error)) }
+    const igual = existentes.data.find((x) => x.id !== produto?.id && normNome(x.nome) === normNome(f.nome))
+    if (igual) { setBusy(false); return setErro(`Já existe um produto chamado "${igual.nome}". Use outro nome.`) }
     const row = {
       nome: f.nome.trim(), sku: f.sku.trim() || null, categoria_id: f.categoria_id || null,
       custo_padrao: parseNum(f.custo_padrao), custos_fixos_unit: parseNum(f.custos_fixos_unit), estoque_minimo: parseNum(f.estoque_minimo),
@@ -40,9 +51,20 @@ export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto
     const r = produto
       ? await supabase.from('produto').update(row).eq('id', produto.id).select('id').single()
       : await supabase.from('produto').insert(row).select('id').single()
+    if (r.error) { setBusy(false); return setErro(erroMsg(r.error)) }
+    if (copiaDe) {
+      const [ficha, precos] = await Promise.all([
+        supabase.from('ficha_tecnica_item').select('material_id,componente_produto_id,quantidade,perc_perda').eq('produto_id', copiaDe.id),
+        supabase.from('preco_canal').select('canal_id,preco_venda').eq('produto_id', copiaDe.id),
+      ])
+      const erros = [ficha.error, precos.error]
+      if (ficha.data?.length) erros.push((await supabase.from('ficha_tecnica_item').insert(ficha.data.map((i) => ({ ...i, produto_id: r.data.id })))).error)
+      if (precos.data?.length) erros.push((await supabase.from('preco_canal').insert(precos.data.map((p) => ({ ...p, produto_id: r.data.id })))).error)
+      const e = erros.find(Boolean)
+      if (e) toast(`Produto criado, mas a ficha ou os preços não foram copiados por completo: ${erroMsg(e)}`)
+    }
     setBusy(false)
-    if (r.error) return setErro(erroMsg(r.error))
-    toast(produto ? 'Produto salvo.' : 'Produto cadastrado.')
+    toast(produto ? 'Produto salvo.' : copiaDe ? 'Produto duplicado.' : 'Produto cadastrado.')
     onSaved(r.data.id)
   }
   async function excluir() {
@@ -57,7 +79,7 @@ export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto
   const set = (k: keyof typeof f) => (v: string) => setF({ ...f, [k]: v })
 
   return (
-    <Modal open={open} onClose={onClose} title={produto ? 'Editar produto' : 'Novo produto'} wide
+    <Modal open={open} onClose={onClose} title={produto ? 'Editar produto' : copiaDe ? `Duplicar ${copiaDe.nome}` : 'Novo produto'} wide
       footer={<>{produto && isAdmin && onDeleted && <BotaoExcluir disabled={busy} onClick={excluir} />}<Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{produto ? 'Salvar' : 'Cadastrar produto'}</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome" className="sm:col-span-2"><Input value={f.nome} onChange={(e) => set('nome')(e.target.value)} placeholder="Prateleira LED 60 cm branca" /></Field>
@@ -74,6 +96,7 @@ export default function ProdutoForm({ open, onClose, onSaved, onDeleted, produto
         <Field label="Observações" className="sm:col-span-2"><Textarea value={f.observacoes} onChange={(e) => set('observacoes')(e.target.value)} rows={2} /></Field>
         {produto && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.ativo} onChange={(e) => setF({ ...f, ativo: e.target.checked })} /> Produto ativo (aparece nas vendas)</label>}
       </div>
+      {copiaDe && <p className="mt-4 text-sm text-muted">A ficha técnica e os preços por canal também serão copiados. O estoque começa em zero.</p>}
       <div className="mt-3"><ErrorBox msg={erro} /></div>
     </Modal>
   )

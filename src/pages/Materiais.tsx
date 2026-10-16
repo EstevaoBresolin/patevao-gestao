@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Plus } from 'lucide-react'
+import { Copy, Plus } from 'lucide-react'
 import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
-import { money, parseNum, qty } from '../lib/fmt'
+import { money, normNome, parseNum, qty } from '../lib/fmt'
 import { UNIDADES, type Categoria, type Fornecedor, type Material } from '../lib/types'
 import { Badge, BotaoExcluir, Button, Empty, ErrorBox, Field, Input, Loading, Modal, NumInput, PageHeader, Panel, Select, Table, Textarea, useConfirm, useToast } from '../components/ui'
 import { useAuth } from '../lib/auth'
@@ -11,6 +11,7 @@ const br = (n: number | null | undefined) => (n == null ? '' : String(Number(n))
 
 export default function Materiais() {
   const [edit, setEdit] = useState<Material | null | 'novo'>(null)
+  const [copia, setCopia] = useState<Material | null>(null)
   const [busca, setBusca] = useState('')
   const [cat, setCat] = useState('')
   const [soBaixo, setSoBaixo] = useState(false)
@@ -57,12 +58,14 @@ export default function Materiais() {
         )}
       </Panel>
       <p className="mt-3 text-xs text-muted">"Dura" é a estimativa de dias até acabar, pelo consumo dos últimos 30 dias na produção.</p>
-      <MaterialForm open={edit !== null} material={edit === 'novo' ? null : edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); recarregar() }} />
+      <MaterialForm open={edit !== null} material={edit === 'novo' ? null : edit} onClose={() => setEdit(null)} onSaved={() => { setEdit(null); recarregar() }}
+        onDuplicar={(m) => { setEdit(null); setCopia(m) }} />
+      <MaterialForm open={copia !== null} material={null} copiaDe={copia} onClose={() => setCopia(null)} onSaved={() => { setCopia(null); recarregar() }} />
     </div>
   )
 }
 
-function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; material: Material | null; onClose: () => void; onSaved: () => void }) {
+function MaterialForm({ open, material, copiaDe, onClose, onSaved, onDuplicar }: { open: boolean; material: Material | null; copiaDe?: Material | null; onClose: () => void; onSaved: () => void; onDuplicar?: (m: Material) => void }) {
   const toast = useToast()
   const confirmar = useConfirm()
   const { isAdmin } = useAuth()
@@ -78,19 +81,25 @@ function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; mat
     supabase.from('categoria').select('*').eq('tipo', 'material').order('nome').then(({ data }) => setCats((data ?? []) as Categoria[]))
     supabase.from('fornecedor').select('*').eq('ativo', true).order('nome').then(({ data }) => setForns((data ?? []) as Fornecedor[]))
     setErro(null)
-    setF(material ? {
-      ...vazio, nome: material.nome, sku: material.sku ?? '', categoria_id: material.categoria_id ?? '', unidade_uso: material.unidade_uso,
-      unidade_compra: material.unidade_compra, fator_conversao: br(material.fator_conversao), fornecedor_padrao_id: material.fornecedor_padrao_id ?? '',
-      estoque_minimo: br(material.estoque_minimo), localizacao: material.localizacao ?? '', observacoes: material.observacoes ?? '', ativo: material.ativo,
+    const base = material ?? copiaDe
+    setF(base ? {
+      ...vazio, nome: copiaDe ? `${base.nome} (cópia)` : base.nome, sku: copiaDe ? '' : base.sku ?? '', categoria_id: base.categoria_id ?? '', unidade_uso: base.unidade_uso,
+      unidade_compra: base.unidade_compra, fator_conversao: br(base.fator_conversao), fornecedor_padrao_id: base.fornecedor_padrao_id ?? '',
+      estoque_minimo: br(base.estoque_minimo), localizacao: base.localizacao ?? '', observacoes: base.observacoes ?? '', ativo: copiaDe ? true : base.ativo,
+      custo_inicial: copiaDe && Number(copiaDe.custo_medio) > 0 ? br(copiaDe.custo_medio) : '',
     } : vazio)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, material])
+  }, [open, material, copiaDe])
 
   async function salvar() {
     if (!f.nome.trim()) return setErro('Dê um nome ao material.')
     if (parseNum(f.fator_conversao) <= 0) return setErro('A conversão precisa ser maior que zero.')
     if (!material && parseNum(f.saldo_inicial) > 0 && !(parseNum(f.custo_inicial) > 0)) return setErro(`Informe o custo por ${f.unidade_uso} do saldo inicial. Sem ele, o material entra com custo zero.`)
     setBusy(true); setErro(null)
+    const existentes = await supabase.from('material').select('id,nome')
+    if (existentes.error) { setBusy(false); return setErro(erroMsg(existentes.error)) }
+    const igual = existentes.data.find((x) => x.id !== material?.id && normNome(x.nome) === normNome(f.nome))
+    if (igual) { setBusy(false); return setErro(`Já existe um material chamado "${igual.nome}". Use outro nome.`) }
     const row = {
       nome: f.nome.trim(), sku: f.sku.trim() || null, categoria_id: f.categoria_id || null, unidade_uso: f.unidade_uso, unidade_compra: f.unidade_compra,
       fator_conversao: parseNum(f.fator_conversao), fornecedor_padrao_id: f.fornecedor_padrao_id || null, estoque_minimo: parseNum(f.estoque_minimo),
@@ -103,7 +112,7 @@ function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; mat
       if (m.error) { setBusy(false); return setErro(erroMsg(m.error)) }
     }
     setBusy(false)
-    toast(material ? 'Material salvo.' : 'Material cadastrado.')
+    toast(material ? 'Material salvo.' : copiaDe ? 'Material duplicado.' : 'Material cadastrado.')
     onSaved()
   }
   async function excluir() {
@@ -119,8 +128,8 @@ function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; mat
   const conv = f.unidade_compra !== f.unidade_uso
 
   return (
-    <Modal open={open} onClose={onClose} title={material ? material.nome : 'Novo material'} wide
-      footer={<>{material && isAdmin && <BotaoExcluir disabled={busy} onClick={excluir} />}<Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{material ? 'Salvar' : 'Cadastrar material'}</Button></>}>
+    <Modal open={open} onClose={onClose} title={material ? material.nome : copiaDe ? `Duplicar ${copiaDe.nome}` : 'Novo material'} wide
+      footer={<>{material && isAdmin && <BotaoExcluir disabled={busy} onClick={excluir} />}{material && onDuplicar && <Button disabled={busy} onClick={() => onDuplicar(material)}><Copy size={15} /> Duplicar</Button>}<Button onClick={onClose}>Cancelar</Button><Button variant="primary" disabled={busy} onClick={salvar}>{material ? 'Salvar' : 'Cadastrar material'}</Button></>}>
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Nome" className="sm:col-span-2"><Input value={f.nome} onChange={(e) => set('nome')(e.target.value)} placeholder="Fita LED 3000K 12V" /></Field>
         <Field label="SKU (código interno)"><Input value={f.sku} onChange={(e) => set('sku')(e.target.value)} /></Field>
