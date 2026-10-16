@@ -84,6 +84,34 @@ async function produtoDoAnuncio(db: SupabaseClient, mlb: string, variacao: numbe
   return semVar.length === 1 ? semVar[0] : lista.length === 1 ? lista[0] : null
 }
 
+type Componente = { produto_id: string; quantidade: number; peso: number }
+
+/**
+ * O que sai do estoque em 1 unidade vendida do anúncio.
+ * Primeiro olha a composição do anúncio (kits, em Configurações → Mercado Livre);
+ * senão, o produto que tem esse código de anúncio (1 unidade).
+ * O peso (custo) serve para repartir o preço do kit entre os produtos.
+ */
+async function componentesDoAnuncio(db: SupabaseClient, mlb: string, variacao: number | null): Promise<Componente[] | null> {
+  const codigo = 'MLB' + digitos(mlb)
+  const { data: kit } = await db.from('ml_anuncio_item').select('produto_id, quantidade, variacao').eq('anuncio', codigo)
+  let linhas = (kit ?? []).filter((k) => variacao != null && Number(k.variacao) === variacao)
+  if (!linhas.length) linhas = (kit ?? []).filter((k) => k.variacao == null)
+  let comp: { produto_id: string; quantidade: number }[]
+  if (linhas.length) comp = linhas.map((k) => ({ produto_id: k.produto_id, quantidade: Number(k.quantidade) }))
+  else {
+    const p = await produtoDoAnuncio(db, mlb, variacao)
+    if (!p) return null
+    comp = [{ produto_id: p.id, quantidade: 1 }]
+  }
+  const { data: custos } = await db.from('vw_produto_estoque').select('id, custo_medio, custo_padrao').in('id', comp.map((c) => c.produto_id))
+  return comp.map((c) => {
+    const x = (custos ?? []).find((y) => y.id === c.produto_id)
+    const custo = Number(x?.custo_medio) > 0 ? Number(x?.custo_medio) : Number(x?.custo_padrao) > 0 ? Number(x?.custo_padrao) : 1
+    return { ...c, peso: custo * c.quantidade }
+  })
+}
+
 export async function atualizarEnvio(db: SupabaseClient, shipmentId: number) {
   const s = await ml(db, `/shipments/${shipmentId}`)
   const novo = statusEnvio(s.status)
@@ -127,11 +155,21 @@ export async function importarPedido(db: SupabaseClient, orderId: number): Promi
   const itens: { produto_id: string; quantidade: number; preco_unit: number }[] = []
   let taxa = 0, bruta = 0
   for (const i of o.order_items ?? []) {
-    const p = await produtoDoAnuncio(db, i.item.id, i.item.variation_id ?? null)
-    if (!p) return pendente(`O anúncio ${i.item.id} ("${i.item.title}") não está ligado a nenhum produto. Preencha o "Código do anúncio no Mercado Livre" no produto.`)
-    itens.push({ produto_id: p.id, quantidade: Number(i.quantity), preco_unit: Number(i.unit_price) })
-    taxa += Number(i.sale_fee ?? 0) * Number(i.quantity)
-    bruta += Number(i.quantity) * Number(i.unit_price)
+    const comp = await componentesDoAnuncio(db, i.item.id, i.item.variation_id ?? null)
+    if (!comp) return pendente(`O anúncio ${i.item.id} ("${i.item.title}") não está ligado a nenhum produto. Use "Ligar anúncio" para dizer qual produto (ou quais, se for kit) sai do estoque.`)
+    const qtd = Number(i.quantity), linha = qtd * Number(i.unit_price)
+    // Kit: o valor do anúncio é repartido entre os produtos pelo custo de cada um.
+    const pesoTotal = comp.reduce((s, c) => s + c.peso, 0)
+    let resto = Math.round(linha * 100) / 100
+    comp.forEach((c, k) => {
+      const quantidade = qtd * c.quantidade
+      const valor = k === comp.length - 1 ? resto : Math.round(linha * (c.peso / pesoTotal) * 100) / 100
+      const preco_unit = Math.round((valor / quantidade) * 100) / 100
+      resto = Math.round((resto - preco_unit * quantidade) * 100) / 100
+      itens.push({ produto_id: c.produto_id, quantidade, preco_unit })
+    })
+    taxa += Number(i.sale_fee ?? 0) * qtd
+    bruta += linha
   }
 
   const { data: canal } = await db.from('canal').select('id').ilike('nome', '%mercado%livre%').eq('ativo', true).limit(1).maybeSingle()
