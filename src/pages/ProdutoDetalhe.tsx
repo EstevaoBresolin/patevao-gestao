@@ -5,7 +5,7 @@ import { supabase, erroMsg } from '../lib/supabase'
 import { useLoad } from '../lib/useQuery'
 import { dataHoraBR, money, parseNum, percent, qty } from '../lib/fmt'
 import { custoProduto, TIPO_MOV, type Material, type Produto, type TaxaVigente } from '../lib/types'
-import { Badge, Button, Empty, ErrorBox, Field, Loading, NumInput, PageHeader, Panel, Select, Stat, Table, useToast } from '../components/ui'
+import { Badge, Button, Empty, ErrorBox, Field, Loading, NumInput, PageHeader, Panel, Select, Stat, Table, useConfirm, useToast } from '../components/ui'
 import ProdutoForm from '../components/ProdutoForm'
 
 type Item = { id: string; material_id: string; quantidade: number; perc_perda: number; material: Material | null }
@@ -13,6 +13,7 @@ type Item = { id: string; material_id: string; quantidade: number; perc_perda: n
 export default function ProdutoDetalhe() {
   const { id } = useParams()
   const toast = useToast()
+  const confirmar = useConfirm()
   const navigate = useNavigate()
   const [editar, setEditar] = useState(false)
   const [duplicar, setDuplicar] = useState(false)
@@ -63,10 +64,19 @@ export default function ProdutoDetalhe() {
     setItemEdit(({ [i.id]: _, ...resto }) => resto)
     toast('Ficha técnica atualizada.'); ficha.recarregar()
   }
-  async function atualizarCustoPadrao() {
-    const { error } = await supabase.from('produto').update({ custo_padrao: Math.round(custoFicha * 10000) / 10000 }).eq('id', id!)
+  /** Passa a usar o custo da ficha técnica como custo do produto (e, se quiser, nas vendas já lançadas). */
+  async function usarCustoFicha() {
+    setErro(null)
+    if (!(await confirmar({ titulo: `Usar ${money(custoFicha)} como custo?`, perigo: false, confirmar: 'Usar custo da ficha',
+      mensagem: <>O custo usado nas vendas passa de {money(custoAtual)} para {money(custoFicha)}, inclusive para as unidades que já estão no estoque. As próximas vendas saem com o custo novo.</> }))) return
+    const { count } = await supabase.from('venda_item').select('venda_id, venda!inner(status)', { count: 'exact', head: true })
+      .eq('produto_id', id!).not('venda.status', 'in', '(cancelada,devolvida)')
+    const corrigir = !!count && (await confirmar({ titulo: 'Corrigir as vendas já lançadas?', perigo: false, confirmar: 'Corrigir vendas também',
+      mensagem: <>Este produto aparece em {count} venda(s) já lançada(s) com o custo antigo. Corrigindo, o lucro delas é recalculado com {money(custoFicha)}. Em "Voltar", elas ficam como estão.</> }))
+    const { data, error } = await supabase.rpc('usar_custo_ficha', { p_id: id, p_corrigir_vendas: corrigir })
     if (error) return setErro(erroMsg(error))
-    toast('Custo do produto atualizado pela ficha técnica.'); prod.recarregar()
+    toast(data?.vendas ? `Custo atualizado e ${data.vendas} venda(s) recalculada(s).` : 'Custo atualizado pela ficha técnica.')
+    prod.recarregar()
   }
   async function salvarPreco(canal_id: string) {
     const v = precoEdit[canal_id]
@@ -99,7 +109,7 @@ export default function ProdutoDetalhe() {
 
       <div className="grid min-w-0 gap-5 lg:grid-cols-[1.4fr_1fr]">
         <Panel title="Ficha técnica (por unidade)"
-          actions={itens.length > 0 && Math.abs(custoFicha - Number(p.custo_padrao)) > 0.01 && Number(p.custo_medio) === 0 && <Button size="sm" onClick={atualizarCustoPadrao}>Usar custo da ficha</Button>}>
+          actions={itens.length > 0 && Math.abs(custoFicha - custoAtual) > 0.005 && <Button size="sm" onClick={usarCustoFicha}>Usar custo da ficha</Button>}>
           {itens.length > 0 && <p className="border-b border-line px-4 py-2 text-xs text-muted">Para corrigir, altere a quantidade ou a perda e clique fora do campo.</p>}
           {itens.length === 0 ? <Empty title="Nenhum material cadastrado">Adicione os materiais que uma unidade consome. Assim a produção baixa o estoque deles e o custo sai certo.</Empty> : (
             <Table head={<tr><th>Material</th><th className="text-right">Qtd.</th><th className="text-right">Perda</th><th className="text-right">Custo</th><th /></tr>}>
