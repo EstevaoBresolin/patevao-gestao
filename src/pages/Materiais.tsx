@@ -89,6 +89,7 @@ function MaterialForm({ open, material, onClose, onSaved }: { open: boolean; mat
   async function salvar() {
     if (!f.nome.trim()) return setErro('Dê um nome ao material.')
     if (parseNum(f.fator_conversao) <= 0) return setErro('A conversão precisa ser maior que zero.')
+    if (!material && parseNum(f.saldo_inicial) > 0 && !(parseNum(f.custo_inicial) > 0)) return setErro(`Informe o custo por ${f.unidade_uso} do saldo inicial. Sem ele, o material entra com custo zero.`)
     setBusy(true); setErro(null)
     const row = {
       nome: f.nome.trim(), sku: f.sku.trim() || null, categoria_id: f.categoria_id || null, unidade_uso: f.unidade_uso, unidade_compra: f.unidade_compra,

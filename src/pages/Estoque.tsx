@@ -110,10 +110,13 @@ function Movimentar({ alvo, onClose, onSaved }: { alvo: Alvo | null; onClose: ()
     if (!ajuste && parseNum(q) <= 0) return setErro('Informe a quantidade.')
     if (ajuste && delta === 0) return setErro('O saldo informado é igual ao atual.')
     if (tipo !== 'entrada_manual' && !motivo.trim()) return setErro('Informe o motivo.')
+    // Entrada sem custo entrava a R$ 0 quando o item ainda não tinha custo médio e derrubava a média.
+    const custoEntrada = custo.trim() ? parseNum(custo) : alvo.custo
+    if (tipo === 'entrada_manual' && !(custoEntrada > 0)) return setErro(`Informe o custo por ${alvo.unidade}. Sem custo, a entrada derruba o custo médio usado nas vendas.`)
     setBusy(true)
     const { error } = await supabase.rpc('movimentar_estoque', {
       p_item_tipo: alvo.tipo, p_item_id: alvo.id, p_tipo: tipo, p_quantidade: ajuste ? delta : parseNum(q),
-      p_custo_unit: tipo === 'entrada_manual' && custo.trim() ? parseNum(custo) : null, p_motivo: motivo,
+      p_custo_unit: tipo === 'entrada_manual' ? custoEntrada : null, p_motivo: motivo,
     })
     setBusy(false)
     if (error) return setErro(erroMsg(error))
@@ -137,7 +140,7 @@ function Movimentar({ alvo, onClose, onSaved }: { alvo: Alvo | null; onClose: ()
           hint={ajuste && q ? `Diferença: ${delta > 0 ? '+' : ''}${qty(delta)}` : undefined}>
           <NumInput value={q} onChange={setQ} />
         </Field>
-        {tipo === 'entrada_manual' && <Field label={`Custo por ${alvo.unidade} (R$)`} hint={`Vazio = usa o custo médio atual (${money(alvo.custo)}).`}><NumInput value={custo} onChange={setCusto} /></Field>}
+        {tipo === 'entrada_manual' && <Field label={`Custo por ${alvo.unidade} (R$)`} hint={alvo.custo > 0 ? `Vazio = usa o custo atual (${money(alvo.custo)}).` : 'Obrigatório: este item ainda não tem custo.'}><NumInput value={custo} onChange={setCusto} /></Field>}
         <Field label={tipo === 'entrada_manual' ? 'Observação (opcional)' : 'Motivo'}><Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={2} /></Field>
         <ErrorBox msg={erro} />
       </div>
